@@ -4,10 +4,10 @@ My biggest blocker over the past few months was always GPU availability. Lambda 
 
 This application comes with two neat features:
 
-View available gpus in realtime. Launch and terminate gpus from within the same window.
+View available gpus in near realtime. Launch and terminate gpus from within the same window.
 ![Proof of concept](PoC.png)
 
-Targeted alerts on instance types/gpus with the ability snipe using options like "Any Region", high-level regions like "Us-East", or even more granular zones within a region such as "us-east-1". Alerts create a blinking visual highlight effect, and the page emits a beeping noise when desired gpus become available.
+Create targeted alerts on desired gpus with the ability to snipe GPUs immediately after they first become available. Includes targeted region capabilities like "Any Region", high-level regions like "Us-East", or even more granular zones within a region such as "us-east-1". When desired gpus become available, the triggered alerts create a blinking visual highlight effect and the page emits a beeping noise.
 ![Proof of concept 2](PoC2.png)
 
 
