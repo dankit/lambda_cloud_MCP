@@ -171,6 +171,12 @@ export function parseInstanceDetail(raw: unknown): InstanceDetail | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   if (typeof o.id !== "string" || !o.id) return null;
+  let instance_type_name: string | undefined;
+  const instType = o.instance_type;
+  if (instType && typeof instType === "object") {
+    const n = (instType as { name?: unknown }).name;
+    if (typeof n === "string" && n) instance_type_name = n;
+  }
   return {
     id: o.id,
     name: typeof o.name === "string" ? o.name : undefined,
@@ -186,6 +192,7 @@ export function parseInstanceDetail(raw: unknown): InstanceDetail | null {
     ssh_key_names: Array.isArray(o.ssh_key_names)
       ? o.ssh_key_names.filter((x): x is string => typeof x === "string")
       : undefined,
+    instance_type_name,
   };
 }
 

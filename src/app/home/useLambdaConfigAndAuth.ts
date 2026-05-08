@@ -100,6 +100,9 @@ export function useLambdaConfigAndAuth() {
     }
   };
 
+  const watchConfigSyncConfigured =
+    configStatus?.watchConfigSyncConfigured ?? false;
+
   return {
     apiKeyOverride,
     setApiKeyOverride,
@@ -118,5 +121,6 @@ export function useLambdaConfigAndAuth() {
     lambdaRateLimitHit,
     apiKeyBadge,
     pemBadge,
+    watchConfigSyncConfigured,
   };
 }

@@ -32,6 +32,8 @@ export function useCapacityAlerts({
   runningInstancesLength,
   launchBusy,
   launchCooldown,
+  watchConfigSyncConfigured = false,
+  watchConfigSyncSecret,
 }: {
   gpuRows: GpuRow[];
   sshKeys: SshKey[];
@@ -43,6 +45,10 @@ export function useCapacityAlerts({
   runningInstancesLength: number;
   launchBusy: boolean;
   launchCooldown: boolean;
+  /** Mirrors server `LAMBDA_WATCH_CONFIG_PATH`; enables POST sync for MCP/tools. */
+  watchConfigSyncConfigured?: boolean;
+  /** Optional; pairs with server `LAMBDA_WATCH_CONFIG_SYNC_SECRET`. */
+  watchConfigSyncSecret?: string | null;
 }) {
   const [capacityAlerts, setCapacityAlerts] = useState<CapacityAlert[]>([]);
   const [snipePrefs, setSnipePrefs] = useState<Record<string, SnipePref>>({});
@@ -347,6 +353,27 @@ export function useCapacityAlerts({
     const n = capacityAlerts.length;
     return n === 0 ? "No capacity alerts" : `${n} alert${n === 1 ? "" : "s"}`;
   }, [capacityAlerts]);
+
+  useEffect(() => {
+    if (!alertsHydrated || !watchConfigSyncConfigured) return;
+    const id = window.setTimeout(() => {
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      const sec = watchConfigSyncSecret?.trim();
+      if (sec) headers["x-lambda-watch-sync-secret"] = sec;
+      void fetch("/api/watch-config", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ capacityAlerts, snipePrefs }),
+      });
+    }, 450);
+    return () => window.clearTimeout(id);
+  }, [
+    capacityAlerts,
+    snipePrefs,
+    alertsHydrated,
+    watchConfigSyncConfigured,
+    watchConfigSyncSecret,
+  ]);
 
   return {
     alertsHydrated,

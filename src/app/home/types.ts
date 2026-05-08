@@ -18,6 +18,8 @@ export type ConfigStatus = {
   apiKeyConfigured: boolean;
   pemPathConfigured: boolean;
   pemPathFilename: string | null;
+  /** Server has `LAMBDA_WATCH_CONFIG_PATH`; MCP/UI can sync watch/snipe JSON to disk. */
+  watchConfigSyncConfigured: boolean;
 };
 
 /** One watched GPU type with a region to monitor for capacity. */
@@ -42,4 +44,6 @@ export type InstanceDetail = {
   jupyter_url?: string;
   region?: { name?: string; description?: string };
   ssh_key_names?: string[];
+  /** Lambda instance payload may include nested `instance_type.name`. */
+  instance_type_name?: string;
 };

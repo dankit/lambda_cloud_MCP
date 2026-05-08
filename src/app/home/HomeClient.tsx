@@ -53,6 +53,9 @@ export function HomeClient() {
     runningInstancesLength: running.runningInstances.length,
     launchBusy,
     launchCooldown: launch.launchCooldown,
+    watchConfigSyncConfigured: config.watchConfigSyncConfigured,
+    watchConfigSyncSecret:
+      process.env.NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET ?? null,
   });
 
   const audio = useAlertAudio(alerts.alertingTypes, alerts.alertingKey);
