@@ -324,6 +324,7 @@ export function useCapacityAlerts({
           continue;
         }
         setSnipeError(null);
+        setCapacityAlertForType(name, false);
         break;
       }
     })();
@@ -339,6 +340,7 @@ export function useCapacityAlerts({
     sshKeys,
     launchInstance,
     capacityAlerts,
+    setCapacityAlertForType,
   ]);
 
   const gpuRowsSortedForSetup = useMemo(
