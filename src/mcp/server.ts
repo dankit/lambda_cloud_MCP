@@ -7,6 +7,11 @@
 import { resolveApiKey } from "../lib/credentials";
 import { lambdaFetch } from "../lib/lambda";
 import { loadWatchConfigForMcp } from "../lib/watch-config-file";
+import {
+  listAllowedSshCommands,
+  runAllowedSshCommand,
+  type AllowedSshCommandId,
+} from "../lib/mcp-ssh";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -45,6 +50,40 @@ async function fetchInstances(clusterId: string | undefined) {
     ok: true as const,
     instances: parseInstancesListPayload(body ?? {}),
     raw: body,
+  };
+}
+
+async function resolveInstanceHostById(instanceId: string) {
+  const result = await fetchInstances(undefined);
+  if (!result.ok) {
+    return {
+      ok: false as const,
+      message: result.message,
+      httpStatus: result.status,
+    };
+  }
+  const match = result.instances.find((instance) => instance.id === instanceId);
+  if (!match) {
+    return {
+      ok: false as const,
+      message: `Instance ${instanceId} was not found.`,
+      httpStatus: 404,
+    };
+  }
+  const host = match.ip?.trim() || match.hostname?.trim() || "";
+  if (!host) {
+    return {
+      ok: false as const,
+      message:
+        `Instance ${instanceId} has no public host to SSH into.` +
+        " Wait for networking to come up and retry.",
+      httpStatus: 409,
+    };
+  }
+  return {
+    ok: true as const,
+    host,
+    instance: match,
   };
 }
 
@@ -194,6 +233,81 @@ mcpServer.registerTool(
       capacityAlerts: loaded.value.capacityAlerts,
       snipePrefs: loaded.value.snipePrefs,
     });
+  }
+);
+
+mcpServer.registerTool(
+  "lambda_ssh_list_allowed_commands",
+  {
+    description:
+      "List strict allowlisted SSH command IDs and their argument schemas.",
+    inputSchema: z.object({}),
+  },
+  async () => {
+    return jsonToolResult({
+      ok: true,
+      policyMode: "strict_allowlist",
+      commands: listAllowedSshCommands(),
+    });
+  }
+);
+
+mcpServer.registerTool(
+  "lambda_ssh_run_allowed_command",
+  {
+    description:
+      "Resolve Lambda instance by instance_id, then SSH and run a strict allowlisted command.",
+    inputSchema: {
+      instance_id: z.string().min(1).describe("Lambda instance ID."),
+      command_id: z
+        .enum([
+          "system_info",
+          "process_list",
+          "tail_log",
+          "python_venv_status",
+          "start_training_job",
+          "training_status",
+        ])
+        .describe("Allowlisted command identifier."),
+      args: z
+        .record(z.string(), z.unknown())
+        .optional()
+        .describe("Command-specific argument object."),
+    },
+  },
+  async ({ instance_id, command_id, args }) => {
+    try {
+      const hostResult = await resolveInstanceHostById(instance_id);
+      if (!hostResult.ok) {
+        return jsonToolResult({
+          ok: false,
+          message: hostResult.message,
+          httpStatus: hostResult.httpStatus,
+        });
+      }
+      const run = await runAllowedSshCommand({
+        host: hostResult.host,
+        commandId: command_id as AllowedSshCommandId,
+        args: args ?? {},
+      });
+      return jsonToolResult({
+        ok: run.ok,
+        instance_id,
+        command_id: run.commandId,
+        host: run.host,
+        user: run.user,
+        port: run.port,
+        exitCode: run.exitCode,
+        durationMs: run.durationMs,
+        timedOut: run.timedOut,
+        truncated: run.truncated,
+        stdout: run.stdout,
+        stderr: run.stderr,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonToolResult({ ok: false, message });
+    }
   }
 );
 

@@ -53,8 +53,20 @@ Run **`npm run mcp`** ([`src/mcp/server.ts`](src/mcp/server.ts)). **`LAMBDA_API_
 | `lambda_list_instances` | List Lambda scheduled instances (IDs, status, IPs, region, instance type); optional `cluster_id` query. |
 | `lambda_get_watch_snipe_config` | Returns **`capacityAlerts`** and **`snipePrefs`** by fetching **`LAMBDA_WATCH_HTTP_URL`** over HTTP (see below). |
 | `lambda_summarize_gpu_types` | Merges live instances with watch/snipe config into a per-GPU-type summary (watched region, Snipe on/off and SSH key name, matching instances). |
+| `lambda_ssh_list_allowed_commands` | Returns strict SSH allowlisted command IDs + arg schemas that agents should follow. |
+| `lambda_ssh_run_allowed_command` | Resolves `instance_id` to host/IP and opens SSH from the MCP process to run one allowlisted command. |
 
-I am working on integration SSH so that the agent can connect to the remote machine and run commands. E.g. if i tell [Poke](https://poke.com/) to setup the ML training environment, run a new training job with different args, check on training status (with possible integration with W&B), or fix something within the environment.  
+SSH is now integrated in strict allowlist mode. Use [`docs/mcp-ssh-commands.md`](docs/mcp-ssh-commands.md) as the source-of-truth for what the agent can run and which args are allowed.
+
+### MCP SSH configuration
+
+- `LAMBDA_SSH_PEM_PATH` is required so MCP can authenticate over SSH.
+- `LAMBDA_SSH_USER` (default `ubuntu`), `LAMBDA_SSH_PORT` (default `22`), `LAMBDA_SSH_TIMEOUT_MS` (default `120000`) tune connection behavior.
+- `LAMBDA_SSH_DISABLE_HOST_KEY_CHECKING` defaults to `true` unless explicitly set to `false`.
+- For project operations:
+  - `MCP_TRAINING_START_COMMAND` is required by `start_training_job`.
+  - `MCP_TRAINING_STATUS_COMMAND` is required by `training_status`.
+  - `MCP_TRAINING_LOG_PATH` and `MCP_SYSTEM_LOG_PATH` are optional log paths used by `tail_log`.
 
 The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads watch/snipe **only** by **GET**ting **`LAMBDA_WATCH_HTTP_URL`** (for example `http://127.0.0.1:3000/api/watch-config` while the Next app is running). [`GET /api/watch-config`](src/app/api/watch-config/route.ts) serves data from that JSON file on the server. Point **`LAMBDA_WATCH_HTTP_URL`** at that route.
 
