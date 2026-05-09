@@ -8,9 +8,9 @@ import { resolveApiKey } from "../lib/credentials";
 import { lambdaFetch } from "../lib/lambda";
 import { loadWatchConfigForMcp } from "../lib/watch-config-file";
 import {
-  listAllowedSshCommands,
-  runAllowedSshCommand,
-  type AllowedSshCommandId,
+  listTrainingEnvironmentHints,
+  runSshShell,
+  sshExecCommandSchema,
 } from "../lib/mcp-ssh";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -237,45 +237,35 @@ mcpServer.registerTool(
 );
 
 mcpServer.registerTool(
-  "lambda_ssh_list_allowed_commands",
+  "lambda_ssh_list_training_hints",
   {
     description:
-      "List strict allowlisted SSH command IDs and their argument schemas.",
+      "Returns optional MCP_* env snippets for training/environment setup. Values are documentation only — not validated or executed. Omit keys when unset. Agents may ignore hints and compose any shell via lambda_ssh_exec.",
     inputSchema: z.object({}),
   },
   async () => {
     return jsonToolResult({
       ok: true,
-      policyMode: "strict_allowlist",
-      commands: listAllowedSshCommands(),
+      disclaimer:
+        "hints are optional documentation from env vars only; MCP does not enforce or run them via this tool.",
+      hints: listTrainingEnvironmentHints(),
     });
   }
 );
 
 mcpServer.registerTool(
-  "lambda_ssh_run_allowed_command",
+  "lambda_ssh_exec",
   {
     description:
-      "Resolve Lambda instance by instance_id, then SSH and run a strict allowlisted command.",
+      "Resolve Lambda instance by instance_id, SSH as configured, and run the given remote bash script (bash -lc). WARNING: arbitrary commands execute on the instance with MCP's SSH identity — destructive or unintended actions are possible if the agent or prompt is unsafe.",
     inputSchema: {
       instance_id: z.string().min(1).describe("Lambda instance ID."),
-      command_id: z
-        .enum([
-          "system_info",
-          "process_list",
-          "tail_log",
-          "python_venv_status",
-          "start_training_job",
-          "training_status",
-        ])
-        .describe("Allowlisted command identifier."),
-      args: z
-        .record(z.string(), z.unknown())
-        .optional()
-        .describe("Command-specific argument object."),
+      command: sshExecCommandSchema.describe(
+        "Remote shell script passed to bash -lc (non-empty, bounded length, no NUL)."
+      ),
     },
   },
-  async ({ instance_id, command_id, args }) => {
+  async ({ instance_id, command }) => {
     try {
       const hostResult = await resolveInstanceHostById(instance_id);
       if (!hostResult.ok) {
@@ -285,15 +275,14 @@ mcpServer.registerTool(
           httpStatus: hostResult.httpStatus,
         });
       }
-      const run = await runAllowedSshCommand({
+      const run = await runSshShell({
         host: hostResult.host,
-        commandId: command_id as AllowedSshCommandId,
-        args: args ?? {},
+        command,
       });
       return jsonToolResult({
         ok: run.ok,
         instance_id,
-        command_id: run.commandId,
+        command: run.command,
         host: run.host,
         user: run.user,
         port: run.port,

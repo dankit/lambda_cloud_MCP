@@ -53,20 +53,17 @@ Run **`npm run mcp`** ([`src/mcp/server.ts`](src/mcp/server.ts)). **`LAMBDA_API_
 | `lambda_list_instances` | List Lambda scheduled instances (IDs, status, IPs, region, instance type); optional `cluster_id` query. |
 | `lambda_get_watch_snipe_config` | Returns **`capacityAlerts`** and **`snipePrefs`** by fetching **`LAMBDA_WATCH_HTTP_URL`** over HTTP (see below). |
 | `lambda_summarize_gpu_types` | Merges live instances with watch/snipe config into a per-GPU-type summary (watched region, Snipe on/off and SSH key name, matching instances). |
-| `lambda_ssh_list_allowed_commands` | Returns strict SSH allowlisted command IDs + arg schemas that agents should follow. |
-| `lambda_ssh_run_allowed_command` | Resolves `instance_id` to host/IP and opens SSH from the MCP process to run one allowlisted command. |
+| `lambda_ssh_list_training_hints` | Returns optional `MCP_*` env snippets for training/environment setup. **Documentation only** — not validated or executed by this tool. |
+| `lambda_ssh_exec` | Resolves `instance_id` to host/IP, SSHs from the MCP process, and runs the given remote script via `bash -lc`. **Arbitrary execution** — use only with trusted agents. |
 
-SSH is now integrated in strict allowlist mode. Use [`docs/mcp-ssh-commands.md`](docs/mcp-ssh-commands.md) as the source-of-truth for what the agent can run and which args are allowed.
+SSH has **no command whitelist**. Optional hints are listed in [`docs/mcp-ssh-training-hints.md`](docs/mcp-ssh-training-hints.md). **`lambda_ssh_list_allowed_commands`** and **`lambda_ssh_run_allowed_command`** were removed; update MCP client configs accordingly.
 
 ### MCP SSH configuration
 
 - `LAMBDA_SSH_PEM_PATH` is required so MCP can authenticate over SSH.
 - `LAMBDA_SSH_USER` (default `ubuntu`), `LAMBDA_SSH_PORT` (default `22`), `LAMBDA_SSH_TIMEOUT_MS` (default `120000`) tune connection behavior.
 - `LAMBDA_SSH_DISABLE_HOST_KEY_CHECKING` defaults to `true` unless explicitly set to `false`.
-- For project operations:
-  - `MCP_TRAINING_START_COMMAND` is required by `start_training_job`.
-  - `MCP_TRAINING_STATUS_COMMAND` is required by `training_status`.
-  - `MCP_TRAINING_LOG_PATH` and `MCP_SYSTEM_LOG_PATH` are optional log paths used by `tail_log`.
+- Optional hints (surfaced only by `lambda_ssh_list_training_hints`, not required for SSH): `MCP_ENV_SETUP_COMMAND`, `MCP_TRAINING_START_COMMAND`, `MCP_TRAINING_STATUS_COMMAND`, `MCP_TRAINING_LOG_PATH`.
 
 The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads watch/snipe **only** by **GET**ting **`LAMBDA_WATCH_HTTP_URL`** (for example `http://127.0.0.1:3000/api/watch-config` while the Next app is running). [`GET /api/watch-config`](src/app/api/watch-config/route.ts) serves data from that JSON file on the server. Point **`LAMBDA_WATCH_HTTP_URL`** at that route.
 

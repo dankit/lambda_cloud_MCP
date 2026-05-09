@@ -3,134 +3,54 @@ import { resolvePemPath } from "./credentials";
 import * as z from "zod";
 
 const MAX_CAPTURE_BYTES = 1024 * 256;
+/** Remote script length cap for lambda_ssh_exec (not a security boundary). */
+export const MAX_SSH_COMMAND_CHARS = 32_768;
 
-const systemInfoArgsSchema = z.object({}).strict();
-const processListArgsSchema = z
-  .object({
-    limit: z.number().int().min(5).max(200).optional(),
-  })
-  .strict();
-const tailLogArgsSchema = z
-  .object({
-    target: z.enum(["training", "system"]),
-    lines: z.number().int().min(10).max(400).optional(),
-  })
-  .strict();
-const pythonVenvArgsSchema = z
-  .object({
-    python_bin: z.string().regex(/^[A-Za-z0-9._/-]{1,80}$/).optional(),
-  })
-  .strict();
-const startTrainingArgsSchema = z
-  .object({
-    run_name: z
-      .string()
-      .regex(/^[A-Za-z0-9._-]{1,64}$/)
-      .optional(),
-  })
-  .strict();
-const trainingStatusArgsSchema = z.object({}).strict();
+export const sshExecCommandSchema = z
+  .string()
+  .min(1, "command must not be empty")
+  .max(MAX_SSH_COMMAND_CHARS)
+  .refine((s) => !s.includes("\0"), "command must not contain NUL bytes");
 
-export const sshCommandCatalog = {
-  system_info: {
-    summary: "Basic host diagnostics (OS, uptime, disk, memory, GPUs).",
-    argsSchema: systemInfoArgsSchema,
-    argsJsonSchema: {
-      type: "object",
-      additionalProperties: false,
-      properties: {},
-    },
+const HINT_KEYS = [
+  {
+    env: "MCP_ENV_SETUP_COMMAND",
+    id: "env_setup",
+    summary: "Suggested shell snippet for environment setup (documentation only).",
   },
-  process_list: {
-    summary: "Top processes by CPU usage.",
-    argsSchema: processListArgsSchema,
-    argsJsonSchema: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        limit: {
-          type: "integer",
-          minimum: 5,
-          maximum: 200,
-          description: "Maximum rows returned (default 40).",
-        },
-      },
-    },
+  {
+    env: "MCP_TRAINING_START_COMMAND",
+    id: "training_start",
+    summary:
+      "Suggested shell snippet to start a training job (documentation only).",
   },
-  tail_log: {
-    summary: "Tail approved log files only (training/system).",
-    argsSchema: tailLogArgsSchema,
-    argsJsonSchema: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        target: {
-          type: "string",
-          enum: ["training", "system"],
-        },
-        lines: {
-          type: "integer",
-          minimum: 10,
-          maximum: 400,
-          description: "Lines to tail (default 120).",
-        },
-      },
-      required: ["target"],
-    },
+  {
+    env: "MCP_TRAINING_STATUS_COMMAND",
+    id: "training_status",
+    summary:
+      "Suggested shell snippet to check training status (documentation only).",
   },
-  python_venv_status: {
-    summary: "Python/venv quick health check.",
-    argsSchema: pythonVenvArgsSchema,
-    argsJsonSchema: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        python_bin: {
-          type: "string",
-          description:
-            "Optional python executable name/path; defaults to python3.",
-        },
-      },
-    },
+  {
+    env: "MCP_TRAINING_LOG_PATH",
+    id: "training_log_path",
+    summary:
+      "Typical training log path on the instance for tail/grep (documentation only).",
   },
-  start_training_job: {
-    summary: "Run project training start command from env.",
-    argsSchema: startTrainingArgsSchema,
-    argsJsonSchema: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        run_name: {
-          type: "string",
-          description:
-            "Optional run name token (letters, digits, dot, underscore, dash).",
-        },
-      },
-    },
-  },
-  training_status: {
-    summary: "Run project training status command from env.",
-    argsSchema: trainingStatusArgsSchema,
-    argsJsonSchema: {
-      type: "object",
-      additionalProperties: false,
-      properties: {},
-    },
-  },
-} as const;
+] as const;
 
-export type AllowedSshCommandId = keyof typeof sshCommandCatalog;
+export type TrainingEnvironmentHint = {
+  id: string;
+  summary: string;
+  value: string;
+};
 
-function shellQuoteSingle(text: string): string {
-  return `'${text.replace(/'/g, `'\"'\"'`)}'`;
-}
-
-function requireEnvText(name: string): string {
-  const value = process.env[name]?.trim();
-  if (!value) {
-    throw new Error(`${name} is required for this command.`);
+export function listTrainingEnvironmentHints(): TrainingEnvironmentHint[] {
+  const hints: TrainingEnvironmentHint[] = [];
+  for (const { env, id, summary } of HINT_KEYS) {
+    const raw = process.env[env]?.trim();
+    if (raw) hints.push({ id, summary, value: raw });
   }
-  return value;
+  return hints;
 }
 
 function parsePort(raw: string | undefined): number {
@@ -155,89 +75,6 @@ function parseTimeoutMs(raw: string | undefined): number {
   return n;
 }
 
-type ResolvedCommand =
-  | { id: "system_info"; script: string }
-  | { id: "process_list"; script: string }
-  | { id: "tail_log"; script: string }
-  | { id: "python_venv_status"; script: string }
-  | { id: "start_training_job"; script: string }
-  | { id: "training_status"; script: string };
-
-export function resolveSshCommand(params: {
-  commandId: AllowedSshCommandId;
-  args: unknown;
-}): ResolvedCommand {
-  const { commandId } = params;
-  if (commandId === "system_info") {
-    sshCommandCatalog.system_info.argsSchema.parse(params.args ?? {});
-    return {
-      id: "system_info",
-      script:
-        "uname -a; uptime; nvidia-smi -L || true; df -h /; free -h || true",
-    };
-  }
-  if (commandId === "process_list") {
-    const parsed = sshCommandCatalog.process_list.argsSchema.parse(
-      params.args ?? {}
-    );
-    const limit = parsed.limit ?? 40;
-    return {
-      id: "process_list",
-      script: `ps -eo pid,pcpu,pmem,etime,args --sort=-pcpu | head -n ${limit}`,
-    };
-  }
-  if (commandId === "tail_log") {
-    const parsed = sshCommandCatalog.tail_log.argsSchema.parse(params.args ?? {});
-    const lines = parsed.lines ?? 120;
-    const trainingLogPath =
-      process.env.MCP_TRAINING_LOG_PATH?.trim() ?? "~/training.log";
-    const systemLogPath =
-      process.env.MCP_SYSTEM_LOG_PATH?.trim() ?? "/var/log/syslog";
-    const path = parsed.target === "training" ? trainingLogPath : systemLogPath;
-    return {
-      id: "tail_log",
-      script: `tail -n ${lines} ${shellQuoteSingle(path)}`,
-    };
-  }
-  if (commandId === "python_venv_status") {
-    const parsed = sshCommandCatalog.python_venv_status.argsSchema.parse(
-      params.args ?? {}
-    );
-    const pythonBin = parsed.python_bin ?? "python3";
-    return {
-      id: "python_venv_status",
-      script: `${shellQuoteSingle(
-        pythonBin
-      )} --version; pip --version || true; [ -n "$VIRTUAL_ENV" ] && echo "VIRTUAL_ENV=$VIRTUAL_ENV" || echo "VIRTUAL_ENV not set"`,
-    };
-  }
-  if (commandId === "start_training_job") {
-    const parsed = sshCommandCatalog.start_training_job.argsSchema.parse(
-      params.args ?? {}
-    );
-    const base = requireEnvText("MCP_TRAINING_START_COMMAND");
-    const runArg = parsed.run_name ? ` --run-name ${parsed.run_name}` : "";
-    return {
-      id: "start_training_job",
-      script: `${base}${runArg}`,
-    };
-  }
-  const _exhaustive: "training_status" = commandId;
-  sshCommandCatalog.training_status.argsSchema.parse(params.args ?? {});
-  return {
-    id: _exhaustive,
-    script: requireEnvText("MCP_TRAINING_STATUS_COMMAND"),
-  };
-}
-
-export function listAllowedSshCommands() {
-  return Object.entries(sshCommandCatalog).map(([id, meta]) => ({
-    id,
-    summary: meta.summary,
-    argsJsonSchema: meta.argsJsonSchema,
-  }));
-}
-
 export type SshRunResult = {
   ok: boolean;
   exitCode: number | null;
@@ -246,17 +83,17 @@ export type SshRunResult = {
   durationMs: number;
   timedOut: boolean;
   truncated: boolean;
-  commandId: AllowedSshCommandId;
+  command: string;
   host: string;
   user: string;
   port: number;
 };
 
-export async function runAllowedSshCommand(params: {
+export async function runSshShell(params: {
   host: string;
-  commandId: AllowedSshCommandId;
-  args: unknown;
+  command: string;
 }): Promise<SshRunResult> {
+  const script = sshExecCommandSchema.parse(params.command);
   const pem = resolvePemPath(null).path;
   if (!pem) {
     throw new Error(
@@ -268,10 +105,6 @@ export async function runAllowedSshCommand(params: {
   const timeoutMs = parseTimeoutMs(process.env.LAMBDA_SSH_TIMEOUT_MS);
   const disableHostKeyChecking =
     process.env.LAMBDA_SSH_DISABLE_HOST_KEY_CHECKING?.trim() !== "false";
-  const resolved = resolveSshCommand({
-    commandId: params.commandId,
-    args: params.args,
-  });
   const sshArgs = [
     "-i",
     pem,
@@ -290,7 +123,7 @@ export async function runAllowedSshCommand(params: {
       "UserKnownHostsFile=/dev/null"
     );
   }
-  sshArgs.push(`${user}@${params.host}`, "bash", "-lc", resolved.script);
+  sshArgs.push(`${user}@${params.host}`, "bash", "-lc", script);
 
   const started = Date.now();
   return await new Promise<SshRunResult>((resolve, reject) => {
@@ -340,7 +173,7 @@ export async function runAllowedSshCommand(params: {
         durationMs: Date.now() - started,
         timedOut,
         truncated,
-        commandId: params.commandId,
+        command: script,
         host: params.host,
         user,
         port,
