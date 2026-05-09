@@ -42,3 +42,8 @@ Optional overrides for the current session: API key and PEM path in **Settings**
 | `npm run build` | Production build |
 | `npm run start` | Production server (after `build`) |
 | `npm run lint` | ESLint |
+| `npm run mcp` | Stdio MCP server (`LAMBDA_API_KEY` required; optional watch/snipe via `LAMBDA_WATCH_HTTP_URL` or `LAMBDA_WATCH_CONFIG_PATH`) |
+
+## MCP tooling
+
+[`GET /api/watch-config`](src/app/api/watch-config/route.ts) returns the same `capacityAlerts` / `snipePrefs` snapshot as POST writes to `LAMBDA_WATCH_CONFIG_PATH`, using identical auth (**development**, or `LAMBDA_WATCH_ALLOW_SYNC=true`, optional `LAMBDA_WATCH_CONFIG_SYNC_SECRET` header). **`npm run mcp`** resolves watch config from **`LAMBDA_WATCH_HTTP_URL`** first when set (e.g. `http://127.0.0.1:3000/api/watch-config` while `npm run dev` is up), otherwise from the JSON file path. MCP sends **`x-lambda-watch-sync-secret`** using `LAMBDA_WATCH_HTTP_SYNC_SECRET` when set, else `LAMBDA_WATCH_CONFIG_SYNC_SECRET`.

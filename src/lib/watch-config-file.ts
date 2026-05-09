@@ -67,3 +67,143 @@ export function resolveWatchConfigPathEnv(): string | null {
   if (!raw) return null;
   return path.resolve(raw);
 }
+
+/** Full GET URL for watch config over HTTP (e.g. http://127.0.0.1:3000/api/watch-config). */
+export function resolveWatchHttpUrlEnv(): string | null {
+  const raw = process.env.LAMBDA_WATCH_HTTP_URL?.trim();
+  if (!raw) return null;
+  return raw;
+}
+
+/**
+ * Secret MCP sends as `x-lambda-watch-sync-secret` when calling `LAMBDA_WATCH_HTTP_URL`.
+ * Mirrors optional `LAMBDA_WATCH_HTTP_SYNC_SECRET`, otherwise `LAMBDA_WATCH_CONFIG_SYNC_SECRET`.
+ */
+export function resolveWatchHttpClientSecretEnv(): string | null {
+  const direct = process.env.LAMBDA_WATCH_HTTP_SYNC_SECRET?.trim();
+  if (direct) return direct;
+  const shared = process.env.LAMBDA_WATCH_CONFIG_SYNC_SECRET?.trim();
+  return shared ?? null;
+}
+
+export type LoadedWatchConfigForMcp =
+  | {
+      ok: true;
+      source: "http";
+      url: string;
+      value: WatchConfigPayload;
+    }
+  | {
+      ok: true;
+      source: "file";
+      path: string;
+      value: WatchConfigPayload;
+    }
+  | {
+      ok: false;
+      source: "unset";
+      message: string;
+    }
+  | {
+      ok: false;
+      source: "http";
+      url: string;
+      error: string;
+      httpStatus?: number;
+    }
+  | {
+      ok: false;
+      source: "file";
+      path: string;
+      error: string;
+    };
+
+/**
+ * Resolve watch/snipe prefs for MCP: prefers `LAMBDA_WATCH_HTTP_URL` (GET) over disk at
+ * `LAMBDA_WATCH_CONFIG_PATH`.
+ */
+export async function loadWatchConfigForMcp(): Promise<LoadedWatchConfigForMcp> {
+  const httpUrl = resolveWatchHttpUrlEnv();
+  if (httpUrl) {
+    const secret = resolveWatchHttpClientSecretEnv();
+    try {
+      const headers: HeadersInit = {};
+      if (secret) headers["x-lambda-watch-sync-secret"] = secret;
+      const res = await fetch(httpUrl, { headers });
+      let bodyJson: unknown;
+      try {
+        bodyJson = (await res.json()) as unknown;
+      } catch {
+        return {
+          ok: false,
+          source: "http",
+          url: httpUrl,
+          error: "Response body is not JSON.",
+          httpStatus: res.status,
+        };
+      }
+      const o =
+        bodyJson && typeof bodyJson === "object"
+          ? (bodyJson as Record<string, unknown>)
+          : {};
+      if (!res.ok) {
+        const err =
+          typeof o.error === "string" ? o.error : `${res.status} ${res.statusText}`;
+        return {
+          ok: false,
+          source: "http",
+          url: httpUrl,
+          error: err,
+          httpStatus: res.status,
+        };
+      }
+      if (o.ok !== true) {
+        const err =
+          typeof o.error === "string"
+            ? o.error
+            : "GET /api/watch-config returned ok:false.";
+        return {
+          ok: false,
+          source: "http",
+          url: httpUrl,
+          error: err,
+          httpStatus: res.status,
+        };
+      }
+      const inner = parseWatchConfigBody(o);
+      if (!inner.ok) {
+        return {
+          ok: false,
+          source: "http",
+          url: httpUrl,
+          error: inner.message,
+          httpStatus: res.status,
+        };
+      }
+      return { ok: true, source: "http", url: httpUrl, value: inner.value };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return { ok: false, source: "http", url: httpUrl, error: msg };
+    }
+  }
+
+  const pathStr = resolveWatchConfigPathEnv();
+  if (!pathStr) {
+    return {
+      ok: false,
+      source: "unset",
+      message:
+        "Neither LAMBDA_WATCH_HTTP_URL nor LAMBDA_WATCH_CONFIG_PATH is set. Configure one of them for watch/snipe data.",
+    };
+  }
+  const read = await readWatchConfigFile(pathStr);
+  if (!read.ok) {
+    return {
+      ok: false,
+      source: "file",
+      path: read.path,
+      error: read.error,
+    };
+  }
+  return { ok: true, source: "file", path: read.path, value: read.value };
+}

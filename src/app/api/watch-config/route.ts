@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   parseWatchConfigBody,
+  readWatchConfigFile,
   resolveWatchConfigPathEnv,
   writeWatchConfigFileAtomic,
 } from "@/lib/watch-config-file";
@@ -16,6 +17,55 @@ function secretOk(req: NextRequest): boolean {
   const got =
     req.headers.get("x-lambda-watch-sync-secret")?.trim() ?? "";
   return got === expected;
+}
+
+export async function GET(req: NextRequest) {
+  const configPath = resolveWatchConfigPathEnv();
+  if (!configPath) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "LAMBDA_WATCH_CONFIG_PATH is not configured on this server.",
+      },
+      { status: 503 }
+    );
+  }
+  if (!syncAllowed()) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Watch config read disabled. Use NODE_ENV=development or set LAMBDA_WATCH_ALLOW_SYNC=true.",
+      },
+      { status: 403 }
+    );
+  }
+  if (!secretOk(req)) {
+    return NextResponse.json(
+      { ok: false, error: "Invalid or missing x-lambda-watch-sync-secret." },
+      { status: 401 }
+    );
+  }
+
+  const read = await readWatchConfigFile(configPath);
+  if (!read.ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: read.error,
+        path: read.path,
+      },
+      { status: 503 }
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    path: configPath,
+    capacityAlerts: read.value.capacityAlerts,
+    snipePrefs: read.value.snipePrefs,
+  });
 }
 
 export async function POST(req: NextRequest) {
