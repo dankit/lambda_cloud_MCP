@@ -1,7 +1,7 @@
 /**
  * MCP stdio server for Lambda GPU availability: instances, watch/snipe config, summaries.
- * Run: `npm run mcp` with LAMBDA_API_KEY and watch/snipe config via optional
- * `LAMBDA_WATCH_HTTP_URL` (GET) or `LAMBDA_WATCH_CONFIG_PATH` (disk).
+ * Run: `npm run mcp` with LAMBDA_API_KEY and watch/snipe via GET `LAMBDA_WATCH_HTTP_URL`
+ * (e.g. Next `/api/watch-config` while the app is running).
  */
 
 import { resolveApiKey } from "../lib/credentials";
@@ -164,7 +164,7 @@ mcpServer.registerTool(
   "lambda_get_watch_snipe_config",
   {
     description:
-      "Read capacity alert + snipe preferences from Next GET /api/watch-config (when LAMBDA_WATCH_HTTP_URL is set) or from LAMBDA_WATCH_CONFIG_PATH (JSON file synced by the Next UI POST). Prefer HTTP URL when MCP cannot read the shared file.",
+      "Read capacity alert + snipe preferences via GET using LAMBDA_WATCH_HTTP_URL (e.g. http://127.0.0.1:3000/api/watch-config). Next must be running; optional x-lambda-watch-sync-secret from LAMBDA_WATCH_HTTP_SYNC_SECRET or LAMBDA_WATCH_CONFIG_SYNC_SECRET.",
     inputSchema: z.object({}),
   },
   async () => {
@@ -177,14 +177,6 @@ mcpServer.registerTool(
           message: loaded.message,
         });
       }
-      if (loaded.source === "file") {
-        return jsonToolResult({
-          ok: false,
-          watchConfigSource: "invalid_file",
-          path: loaded.path,
-          error: loaded.error,
-        });
-      }
       return jsonToolResult({
         ok: false,
         watchConfigSource: "invalid_http",
@@ -195,19 +187,10 @@ mcpServer.registerTool(
           : {}),
       });
     }
-    if (loaded.source === "http") {
-      return jsonToolResult({
-        ok: true,
-        watchConfigSource: "http",
-        url: loaded.url,
-        capacityAlerts: loaded.value.capacityAlerts,
-        snipePrefs: loaded.value.snipePrefs,
-      });
-    }
     return jsonToolResult({
       ok: true,
-      watchConfigSource: "file",
-      path: loaded.path,
+      watchConfigSource: "http",
+      url: loaded.url,
       capacityAlerts: loaded.value.capacityAlerts,
       snipePrefs: loaded.value.snipePrefs,
     });
@@ -239,17 +222,11 @@ mcpServer.registerTool(
       let watchMeta:
         | { watchConfigSource: "unset" }
         | {
-            watchConfigSource: "invalid_file";
-            path: string;
-            error: string;
-          }
-        | {
             watchConfigSource: "invalid_http";
             url: string;
             error: string;
             httpStatus?: number;
           }
-        | { watchConfigSource: "file"; path: string }
         | { watchConfigSource: "http"; url: string } = {
         watchConfigSource: "unset",
       };
@@ -258,12 +235,6 @@ mcpServer.registerTool(
       if (!loaded.ok) {
         if (loaded.source === "unset") {
           watchMeta = { watchConfigSource: "unset" };
-        } else if (loaded.source === "file") {
-          watchMeta = {
-            watchConfigSource: "invalid_file",
-            path: loaded.path,
-            error: loaded.error,
-          };
         } else {
           watchMeta = {
             watchConfigSource: "invalid_http",
@@ -277,10 +248,7 @@ mcpServer.registerTool(
       } else {
         capacityAlerts = loaded.value.capacityAlerts;
         snipePrefs = loaded.value.snipePrefs;
-        watchMeta =
-          loaded.source === "http"
-            ? { watchConfigSource: "http", url: loaded.url }
-            : { watchConfigSource: "file", path: loaded.path };
+        watchMeta = { watchConfigSource: "http", url: loaded.url };
       }
 
       const instResult = await fetchInstances(undefined);

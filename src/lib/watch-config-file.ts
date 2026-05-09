@@ -94,12 +94,6 @@ export type LoadedWatchConfigForMcp =
       value: WatchConfigPayload;
     }
   | {
-      ok: true;
-      source: "file";
-      path: string;
-      value: WatchConfigPayload;
-    }
-  | {
       ok: false;
       source: "unset";
       message: string;
@@ -110,100 +104,82 @@ export type LoadedWatchConfigForMcp =
       url: string;
       error: string;
       httpStatus?: number;
-    }
-  | {
-      ok: false;
-      source: "file";
-      path: string;
-      error: string;
     };
 
 /**
- * Resolve watch/snipe prefs for MCP: prefers `LAMBDA_WATCH_HTTP_URL` (GET) over disk at
- * `LAMBDA_WATCH_CONFIG_PATH`.
+ * Resolve watch/snipe prefs for MCP via GET `LAMBDA_WATCH_HTTP_URL` only (e.g. Next
+ * `/api/watch-config`). The Next app may still persist to `LAMBDA_WATCH_CONFIG_PATH`;
+ * MCP does not read that file.
  */
 export async function loadWatchConfigForMcp(): Promise<LoadedWatchConfigForMcp> {
   const httpUrl = resolveWatchHttpUrlEnv();
-  if (httpUrl) {
-    const secret = resolveWatchHttpClientSecretEnv();
-    try {
-      const headers: HeadersInit = {};
-      if (secret) headers["x-lambda-watch-sync-secret"] = secret;
-      const res = await fetch(httpUrl, { headers });
-      let bodyJson: unknown;
-      try {
-        bodyJson = (await res.json()) as unknown;
-      } catch {
-        return {
-          ok: false,
-          source: "http",
-          url: httpUrl,
-          error: "Response body is not JSON.",
-          httpStatus: res.status,
-        };
-      }
-      const o =
-        bodyJson && typeof bodyJson === "object"
-          ? (bodyJson as Record<string, unknown>)
-          : {};
-      if (!res.ok) {
-        const err =
-          typeof o.error === "string" ? o.error : `${res.status} ${res.statusText}`;
-        return {
-          ok: false,
-          source: "http",
-          url: httpUrl,
-          error: err,
-          httpStatus: res.status,
-        };
-      }
-      if (o.ok !== true) {
-        const err =
-          typeof o.error === "string"
-            ? o.error
-            : "GET /api/watch-config returned ok:false.";
-        return {
-          ok: false,
-          source: "http",
-          url: httpUrl,
-          error: err,
-          httpStatus: res.status,
-        };
-      }
-      const inner = parseWatchConfigBody(o);
-      if (!inner.ok) {
-        return {
-          ok: false,
-          source: "http",
-          url: httpUrl,
-          error: inner.message,
-          httpStatus: res.status,
-        };
-      }
-      return { ok: true, source: "http", url: httpUrl, value: inner.value };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      return { ok: false, source: "http", url: httpUrl, error: msg };
-    }
-  }
-
-  const pathStr = resolveWatchConfigPathEnv();
-  if (!pathStr) {
+  if (!httpUrl) {
     return {
       ok: false,
       source: "unset",
       message:
-        "Neither LAMBDA_WATCH_HTTP_URL nor LAMBDA_WATCH_CONFIG_PATH is set. Configure one of them for watch/snipe data.",
+        "LAMBDA_WATCH_HTTP_URL is not set. Point it at your running app, e.g. http://127.0.0.1:3000/api/watch-config.",
     };
   }
-  const read = await readWatchConfigFile(pathStr);
-  if (!read.ok) {
-    return {
-      ok: false,
-      source: "file",
-      path: read.path,
-      error: read.error,
-    };
+
+  const secret = resolveWatchHttpClientSecretEnv();
+  try {
+    const headers: HeadersInit = {};
+    if (secret) headers["x-lambda-watch-sync-secret"] = secret;
+    const res = await fetch(httpUrl, { headers });
+    let bodyJson: unknown;
+    try {
+      bodyJson = (await res.json()) as unknown;
+    } catch {
+      return {
+        ok: false,
+        source: "http",
+        url: httpUrl,
+        error: "Response body is not JSON.",
+        httpStatus: res.status,
+      };
+    }
+    const o =
+      bodyJson && typeof bodyJson === "object"
+        ? (bodyJson as Record<string, unknown>)
+        : {};
+    if (!res.ok) {
+      const err =
+        typeof o.error === "string" ? o.error : `${res.status} ${res.statusText}`;
+      return {
+        ok: false,
+        source: "http",
+        url: httpUrl,
+        error: err,
+        httpStatus: res.status,
+      };
+    }
+    if (o.ok !== true) {
+      const err =
+        typeof o.error === "string"
+          ? o.error
+          : "GET /api/watch-config returned ok:false.";
+      return {
+        ok: false,
+        source: "http",
+        url: httpUrl,
+        error: err,
+        httpStatus: res.status,
+      };
+    }
+    const inner = parseWatchConfigBody(o);
+    if (!inner.ok) {
+      return {
+        ok: false,
+        source: "http",
+        url: httpUrl,
+        error: inner.message,
+        httpStatus: res.status,
+      };
+    }
+    return { ok: true, source: "http", url: httpUrl, value: inner.value };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { ok: false, source: "http", url: httpUrl, error: msg };
   }
-  return { ok: true, source: "file", path: read.path, value: read.value };
 }
