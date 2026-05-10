@@ -79,4 +79,5 @@ The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads w
 | `npm run build` | Production build |
 | `npm run start` | Production server (after `build`) |
 | `npm run lint` | ESLint |
+| `npm run test` | Vitest (`vitest run`; e.g. launch route and Poke notify flow in [`poke-notify-flow.test.ts`](src/app/api/lambda/launch/poke-notify-flow.test.ts)) |
 | `npm run mcp` | Stdio MCP server (`LAMBDA_API_KEY` required; watch/snipe via GET `LAMBDA_WATCH_HTTP_URL` while the app is up) |
