@@ -58,7 +58,7 @@ Run **`npm run mcp`** ([`src/mcp/server.ts`](src/mcp/server.ts)). **`LAMBDA_API_
 | `lambda_ssh_list_training_hints` | Returns optional `MCP_*` env snippets for training/environment setup. **Documentation only** — not validated or executed by this tool. |
 | `lambda_ssh_exec` | Resolves `instance_id` to host/IP, SSHs from the MCP process, and runs the given remote script via `bash -lc`. **Arbitrary execution** — use only with trusted agents. |
 
-SSH has **no command whitelist**. Optional hints are listed in [`docs/mcp-ssh-training-hints.md`](docs/mcp-ssh-training-hints.md). **`lambda_ssh_list_allowed_commands`** and **`lambda_ssh_run_allowed_command`** were removed; update MCP client configs accordingly.
+SSH has **no command whitelist**. Optional hints are listed in [`docs/mcp-ssh-training-hints.md`](docs/mcp-ssh-training-hints.md).
 
 ### MCP SSH configuration
 
@@ -83,3 +83,12 @@ The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads w
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest (`vitest run`; launch + Poke flow in [`poke-notify-flow.test.ts`](src/app/api/lambda/launch/poke-notify-flow.test.ts). [`vitest.config.ts`](vitest.config.ts) merges **`loadEnv`** for **development** and **test** so **`.env` / `.env.local`** apply. The live Poke test **fails with the response body** if Poke returns non-2xx or JSON without `success: true`; a passing test only means the **API** accepted the message (check the Poke app / conversation if the UI is empty). |
 | `npm run mcp` | Stdio MCP server (`LAMBDA_API_KEY` required; watch/snipe via GET `LAMBDA_WATCH_HTTP_URL` while the app is up) |
+
+
+
+todo
+MCP_ENV_SETUP_COMMAND could be a bash script that auto clones a repo, need to ensure git credentials are already present on MCP
+MCP_TRAINING_START_COMMAND are cli arguments that can be adjusted
+MCP_TRAINING_STATUS_COMMAND could return shell history, might need to incorporate this with setup command to ensure things were setup
+
+give poke access to target project repo (project being launched, not this one) to make changes and fix things
