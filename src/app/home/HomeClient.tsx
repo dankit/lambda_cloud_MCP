@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertsSetupSection } from "@/app/home/AlertsSetupSection";
+import { McpSetupSection } from "@/app/home/McpSetupSection";
 import { LAMBDA_RATE_LIMIT_ALERT, MIN_POLL_SECONDS } from "@/app/home/constants";
 import { GpuCapacityTable } from "@/app/home/GpuCapacityTable";
 import { LaunchModal } from "@/app/home/LaunchModal";
@@ -18,6 +19,7 @@ import styles from "../page.module.css";
 
 export function HomeClient() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [mcpSetupOpen, setMcpSetupOpen] = useState(false);
   const [alertsSetupOpen, setAlertsSetupOpen] = useState(false);
   const [launchBusy, setLaunchBusy] = useState(false);
 
@@ -119,6 +121,11 @@ export function HomeClient() {
         onRefreshNow={data.fetchInstanceTypes}
       />
 
+      <McpSetupSection
+        open={mcpSetupOpen}
+        onToggle={() => setMcpSetupOpen((o) => !o)}
+      />
+
       <div className={styles.badges} style={{ marginBottom: "1rem" }}>
         <span
           className={`${styles.badge} ${config.apiKeyBadge.ok ? styles.badgeOk : styles.badgeWarn}`}
@@ -137,6 +144,31 @@ export function HomeClient() {
           </span>
         )}
       </div>
+
+      {alerts.watchConfigMergeConflict && (
+        <div className={styles.watchConflictBanner} role="alert">
+          <strong>Watch / Snipe differs from synced file.</strong> This browser
+          has alerts or snipe prefs that disagree with{" "}
+          <code>/api/watch-config</code> (what MCP reads). Choose which side
+          should win.
+          <div className={styles.watchConflictActions}>
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.btnPrimary}`}
+              onClick={alerts.resolveWatchConflictUseServer}
+            >
+              Use server (match MCP)
+            </button>
+            <button
+              type="button"
+              className={styles.btn}
+              onClick={alerts.resolveWatchConflictKeepLocal}
+            >
+              Keep this browser and overwrite file
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className={styles.statusLine}>
         <span>

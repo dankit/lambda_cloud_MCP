@@ -20,10 +20,40 @@ import type {
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+
+export type WatchConfigMergeConflictPayload = {
+  capacityAlerts: CapacityAlert[];
+  snipePrefs: Record<string, SnipePref>;
+};
+
+function canonicalWatchPayload(
+  alerts: CapacityAlert[],
+  prefs: Record<string, SnipePref>
+): string {
+  const capacityAlertsSorted = [...alerts].sort(
+    (a, b) =>
+      a.instance_type_name.localeCompare(b.instance_type_name) ||
+      (a.region_name ?? "").localeCompare(b.region_name ?? "")
+  );
+  const keys = Object.keys(prefs).sort();
+  const snipePrefsSorted: Record<string, SnipePref> = {};
+  for (const k of keys) {
+    snipePrefsSorted[k] = prefs[k]!;
+  }
+  return JSON.stringify({ capacityAlerts: capacityAlertsSorted, snipePrefs: snipePrefsSorted });
+}
+
+function isWatchPayloadEmpty(
+  alerts: CapacityAlert[],
+  prefs: Record<string, SnipePref>
+): boolean {
+  return alerts.length === 0 && Object.keys(prefs).length === 0;
+}
 
 export function useCapacityAlerts({
   gpuRows,
@@ -57,8 +87,16 @@ export function useCapacityAlerts({
     () => new Set()
   );
   const [alertsHydrated, setAlertsHydrated] = useState(false);
+  const [watchConfigMergeConflict, setWatchConfigMergeConflict] =
+    useState<WatchConfigMergeConflictPayload | null>(null);
   const prevHadCapacityRef = useRef<Map<string, boolean>>(new Map());
   const prevSnipeAlertingRef = useRef<Set<string>>(new Set());
+  const latestAlertsRef = useRef(capacityAlerts);
+  const latestPrefsRef = useRef(snipePrefs);
+  useLayoutEffect(() => {
+    latestAlertsRef.current = capacityAlerts;
+    latestPrefsRef.current = snipePrefs;
+  }, [capacityAlerts, snipePrefs]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -212,6 +250,109 @@ export function useCapacityAlerts({
     }
   };
 
+  const flushWatchPost = useCallback(
+    (alertsArg: CapacityAlert[], prefsArg: Record<string, SnipePref>) => {
+      if (!watchConfigSyncConfigured) return;
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      const sec = watchConfigSyncSecret?.trim();
+      if (sec) headers["x-lambda-watch-sync-secret"] = sec;
+      void fetch("/api/watch-config", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          capacityAlerts: alertsArg,
+          snipePrefs: prefsArg,
+        }),
+      });
+    },
+    [watchConfigSyncConfigured, watchConfigSyncSecret]
+  );
+
+  const bootstrapWatchFromServerRanRef = useRef(false);
+
+  useEffect(() => {
+    if (
+      !alertsHydrated ||
+      !watchConfigSyncConfigured ||
+      bootstrapWatchFromServerRanRef.current
+    )
+      return;
+    bootstrapWatchFromServerRanRef.current = true;
+
+    const alertsSnapshot = [...latestAlertsRef.current];
+    const prefsSnapshot = { ...latestPrefsRef.current };
+    let cancelled = false;
+
+    void (async () => {
+      const headers: HeadersInit = {};
+      const sec = watchConfigSyncSecret?.trim();
+      if (sec) headers["x-lambda-watch-sync-secret"] = sec;
+
+      let res: Response;
+      try {
+        res = await fetch("/api/watch-config", { headers });
+      } catch {
+        return;
+      }
+      if (cancelled) return;
+
+      let j: Record<string, unknown>;
+      try {
+        j = (await res.json()) as Record<string, unknown>;
+      } catch {
+        return;
+      }
+      if (!res.ok || j.ok !== true) return;
+
+      const localMovedDuringFetch =
+        canonicalWatchPayload(latestAlertsRef.current, latestPrefsRef.current) !==
+        canonicalWatchPayload(alertsSnapshot, prefsSnapshot);
+      if (localMovedDuringFetch) return;
+
+      const serverAlerts = parseStoredCapacityAlerts(j.capacityAlerts);
+      const serverSnipe = parseSnipePrefs(j.snipePrefs ?? {});
+
+      if (
+        canonicalWatchPayload(serverAlerts, serverSnipe) ===
+        canonicalWatchPayload(alertsSnapshot, prefsSnapshot)
+      ) {
+        return;
+      }
+
+      if (isWatchPayloadEmpty(alertsSnapshot, prefsSnapshot)) {
+        setCapacityAlerts(serverAlerts);
+        setSnipePrefs(serverSnipe);
+        persistCapacityAlerts(serverAlerts);
+        persistSnipePrefs(serverSnipe);
+        return;
+      }
+
+      setWatchConfigMergeConflict({
+        capacityAlerts: serverAlerts,
+        snipePrefs: serverSnipe,
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [alertsHydrated, watchConfigSyncConfigured, watchConfigSyncSecret]);
+
+  const resolveWatchConflictUseServer = useCallback(() => {
+    const w = watchConfigMergeConflict;
+    if (!w) return;
+    persistCapacityAlerts(w.capacityAlerts);
+    persistSnipePrefs(w.snipePrefs);
+    setCapacityAlerts(w.capacityAlerts);
+    setSnipePrefs(w.snipePrefs);
+    setWatchConfigMergeConflict(null);
+  }, [watchConfigMergeConflict]);
+
+  const resolveWatchConflictKeepLocal = useCallback(() => {
+    setWatchConfigMergeConflict(null);
+    flushWatchPost(capacityAlerts, snipePrefs);
+  }, [capacityAlerts, snipePrefs, flushWatchPost]);
+
   const onSnipePrefChange = useCallback(
     (instanceTypeName: string, next: SnipePref) => {
       setSnipePrefs((prev) => {
@@ -357,16 +498,14 @@ export function useCapacityAlerts({
   }, [capacityAlerts]);
 
   useEffect(() => {
-    if (!alertsHydrated || !watchConfigSyncConfigured) return;
+    if (
+      !alertsHydrated ||
+      !watchConfigSyncConfigured ||
+      watchConfigMergeConflict !== null
+    )
+      return;
     const id = window.setTimeout(() => {
-      const headers: HeadersInit = { "Content-Type": "application/json" };
-      const sec = watchConfigSyncSecret?.trim();
-      if (sec) headers["x-lambda-watch-sync-secret"] = sec;
-      void fetch("/api/watch-config", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ capacityAlerts, snipePrefs }),
-      });
+      flushWatchPost(capacityAlerts, snipePrefs);
     }, 450);
     return () => window.clearTimeout(id);
   }, [
@@ -374,7 +513,8 @@ export function useCapacityAlerts({
     snipePrefs,
     alertsHydrated,
     watchConfigSyncConfigured,
-    watchConfigSyncSecret,
+    flushWatchPost,
+    watchConfigMergeConflict,
   ]);
 
   return {
@@ -390,5 +530,8 @@ export function useCapacityAlerts({
     onSnipePrefChange,
     gpuRowsSortedForSetup,
     alertsSetupSummary,
+    watchConfigMergeConflict,
+    resolveWatchConflictUseServer,
+    resolveWatchConflictKeepLocal,
   };
 }

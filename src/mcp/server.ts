@@ -4,7 +4,19 @@
  * (e.g. Next `/api/watch-config` while the app is running).
  */
 
+import path from "node:path";
+import { config as loadDotenvFromFile } from "dotenv";
 import { resolveApiKey } from "../lib/credentials";
+
+function bootstrapMcpProcessEnv(): void {
+  const raw = process.env.LAMBDA_DOTENV_PATH?.trim();
+  const relativeFile =
+    raw && raw.length > 0 ? raw : ".env.local";
+  const resolved = path.resolve(process.cwd(), relativeFile);
+  loadDotenvFromFile({ path: resolved, override: false });
+}
+
+bootstrapMcpProcessEnv();
 import { lambdaFetch } from "../lib/lambda";
 import { loadWatchConfigForMcp } from "../lib/watch-config-file";
 import {

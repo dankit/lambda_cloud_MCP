@@ -117,6 +117,47 @@
   outline-offset: 0;
 }
 
+.field textarea.mcpSnippet {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 12rem;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.mcpSetupLead {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+  line-height: 1.45;
+  max-width: 56rem;
+}
+
+.mcpSetupError {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #e8a0a0;
+}
+
+.watchConflictBanner {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--warning);
+  background: rgba(201, 162, 39, 0.1);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--foreground);
+}
+
+.watchConflictActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
 .badges {
   display: flex;
   flex-wrap: wrap;

@@ -24,7 +24,7 @@ All Lambda calls go through **this app’s server routes**; the API key stays ou
 
 1. Copy [`.env.example`](.env.example) to **`.env.local`** or **`.env`** in the project root.
 2. Set **`LAMBDA_API_KEY`** (required for server-side Lambda calls). Set **`LAMBDA_SSH_PEM_PATH`** if you want the suggested SSH path filled in (still not sent to Lambda as key material).
-3. For MCP + synced watch/snipe JSON: **`npm run dev`** auto-persists to **`.lambda/watch-config.json`** unless **`LAMBDA_WATCH_CONFIG_PATH`** overrides — no env var needed for that path in development. On the MCP host set **`LAMBDA_WATCH_HTTP_URL`** (example **`http://127.0.0.1:3000/api/watch-config`**). Explicit **`LAMBDA_WATCH_CONFIG_PATH`** is recommended for **`next start`/production.** Optional: **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**, **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`**, **`LAMBDA_WATCH_HTTP_SYNC_SECRET`**, **`LAMBDA_WATCH_ALLOW_SYNC`**—see [`.env.example`](.env.example).
+3. For MCP + synced watch/snipe JSON: **`npm run dev`** auto-persists to **`.lambda/watch-config.json`** unless **`LAMBDA_WATCH_CONFIG_PATH`** overrides — no env var needed for that path in development. With the app open, use **MCP setup** on the home page for a derived **`LAMBDA_WATCH_HTTP_URL`** and a copy-paste env block. Alternative: set **`LAMBDA_WATCH_HTTP_URL`** yourself (example **`http://127.0.0.1:3000/api/watch-config`**). Explicit **`LAMBDA_WATCH_CONFIG_PATH`** is recommended for **`next start`/production.** Optional: **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**, **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`**, **`LAMBDA_WATCH_HTTP_SYNC_SECRET`**, **`LAMBDA_WATCH_ALLOW_SYNC`**—see [`.env.example`](.env.example).
 4. **`npm install`** then **`npm run dev`** → [http://localhost:3000](http://localhost:3000). On Windows you can run [`dev.cmd`](dev.cmd) instead.
 
 **Optional overrides for the current session:** API key and PEM path in **Settings** (sent only to this app’s APIs).
@@ -35,7 +35,7 @@ All Lambda calls go through **this app’s server routes**; the API key stays ou
 - **Pause:** fast capacity polling stops while you have any running instance or a launch is in flight. If you have at least one alert configured, capacity still refreshes on a **45s** interval so alerts/Snipe can see stock appear.
 - **Instances:** `GET /instances` every **15s**. Same API key in env or Settings → running machines still show after reload.
 - **Refresh now** in Settings forces an immediate capacity fetch when you need it.
-- **Alerts:** after the first successful instance-types load, **Setup alerts** picks watched GPU types (localStorage), optional **watch region**, rows pinned to the top. Capacity in scope → row flashes + repeating beep until that scope shows no capacity; most browsers need a **click anywhere** first (or **Test alert** on its button).
+- **Alerts:** after the first successful instance-types load, **Setup alerts** picks watched GPU types (cached in **`localStorage`**, synced to disk when a watch-config path is active so MCP can GET the same data). Optional **watch region**, rows pinned to the top. If the server file differs from what this browser cached, resolve with **Use server (match MCP)** or **Keep this browser**. Capacity in scope → row flashes + repeating beep until that scope shows no capacity; most browsers need a **click anywhere** first (or **Test alert** on its button).
 - **Snipe:** auto-launch when watched capacity **newly** appears, only with **no** running instances and not during launch/cooldown; **~12s** between launch attempts. Region/SSH key come from the alert panel (SSH key can default to the first key in the account).
 - **After Snipe:** if the beep keeps going (e.g. API still reports capacity), **Remove alert** or **uncheck** the type in the catalog to stop watching and silence the alarm.
 - **SSH hint:** default `ubuntu` @ port **22**; adjust if your image differs.
@@ -44,7 +44,9 @@ All Lambda calls go through **this app’s server routes**; the API key stays ou
 
 ## MCP server (WIP)
 
-Run **`npm run mcp`** ([`src/mcp/server.ts`](src/mcp/server.ts)). **`LAMBDA_API_KEY`** is required (`.env` or the environment of whatever launches the MCP process).
+Run **`npm run mcp`** ([`src/mcp/server.ts`](src/mcp/server.ts)). **`LAMBDA_API_KEY`** is required (environment of whatever launches MCP, optionally filled from **`LAMBDA_DOTENV_PATH`**).
+
+**Dotenv bootstrap:** MCP loads **`LAMBDA_DOTENV_PATH`** relative to **`process.cwd()`** (default **`.env.local`** when unset) before tools run — **`override: false`**, so the Cursor MCP **`env`** block still wins where set. The **MCP setup** panel loads **`GET /api/mcp-setup-hints`** for readiness flags and a **`LAMBDA_WATCH_HTTP_URL`** derived from the current origin.
 
 **Tools**
 

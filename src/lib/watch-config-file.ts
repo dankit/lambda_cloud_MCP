@@ -101,6 +101,12 @@ export function resolveWatchHttpUrlEnv(): string | null {
   return raw;
 }
 
+/** GET/POST /api/watch-config are allowed (dev by default; prod requires flag). */
+export function watchConfigHttpSyncAllowed(): boolean {
+  if (process.env.NODE_ENV === "development") return true;
+  return process.env.LAMBDA_WATCH_ALLOW_SYNC === "true";
+}
+
 /**
  * Secret MCP sends as `x-lambda-watch-sync-secret` when calling `LAMBDA_WATCH_HTTP_URL`.
  * Mirrors optional `LAMBDA_WATCH_HTTP_SYNC_SECRET`, otherwise `LAMBDA_WATCH_CONFIG_SYNC_SECRET`.

@@ -14,6 +14,7 @@ export const PAUSED_CAPACITY_ALERT_POLL_MS = 45_000;
 export const ALERT_STORAGE_KEY = "lambda_gpu_capacity_alert_types";
 export const SNIPE_PREFS_STORAGE_KEY = "lambda_gpu_snipe_prefs";
 export const SETTINGS_PANEL_ID = "settings-panel-fields";
+export const MCP_SETUP_PANEL_ID = "mcp-setup-panel";
 export const ALERTS_PANEL_ID = "setup-alerts-panel-fields";
 export const TEST_ALERT_MS = 3_600;
 export const LAUNCH_COOLDOWN_MS = 12_000;

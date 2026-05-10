@@ -3,13 +3,9 @@ import {
   parseWatchConfigBody,
   readWatchConfigFile,
   resolveWatchConfigPathEnv,
+  watchConfigHttpSyncAllowed,
   writeWatchConfigFileAtomic,
 } from "@/lib/watch-config-file";
-
-function syncAllowed(): boolean {
-  if (process.env.NODE_ENV === "development") return true;
-  return process.env.LAMBDA_WATCH_ALLOW_SYNC === "true";
-}
 
 function secretOk(req: NextRequest): boolean {
   const expected = process.env.LAMBDA_WATCH_CONFIG_SYNC_SECRET?.trim();
@@ -31,7 +27,7 @@ export async function GET(req: NextRequest) {
       { status: 503 }
     );
   }
-  if (!syncAllowed()) {
+  if (!watchConfigHttpSyncAllowed()) {
     return NextResponse.json(
       {
         ok: false,
@@ -80,7 +76,7 @@ export async function POST(req: NextRequest) {
       { status: 503 }
     );
   }
-  if (!syncAllowed()) {
+  if (!watchConfigHttpSyncAllowed()) {
     return NextResponse.json(
       {
         ok: false,
