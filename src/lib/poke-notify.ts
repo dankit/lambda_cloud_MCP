@@ -55,3 +55,20 @@ export function extractLaunchInstanceIds(body: unknown): string[] {
   if (!Array.isArray(ids)) return [];
   return ids.filter((id): id is string => typeof id === "string");
 }
+
+/** Body `message` sent to Poke after a successful launch (single source of truth with tests). */
+export function buildPokeLaunchNotifyMessage(params: {
+  region_name: string;
+  instance_type_name: string;
+  ssh_key_name: string;
+  instanceIdLine: string;
+}): string {
+  return [
+    "Send me a text message with my Lambda GPU launch details:",
+    `- Status: succeeded`,
+    `- Instance type: ${params.instance_type_name}`,
+    `- Region: ${params.region_name}`,
+    `- SSH key name: ${params.ssh_key_name}`,
+    `- Instance id(s): ${params.instanceIdLine}`,
+  ].join("\n");
+}

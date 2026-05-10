@@ -20,6 +20,8 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: "node",
       include: ["**/*.test.ts"],
+      /** So `console.log` from tests (e.g. live Poke request/response) prints to the terminal. */
+      disableConsoleIntercept: true,
     },
     resolve: {
       alias: {
