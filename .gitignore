@@ -42,3 +42,6 @@ yarn-error.log*
 next-env.d.ts
 
 dev.cmd
+
+# watch/snipe sync (default dev path: .lambda/watch-config.json)
+.lambda/

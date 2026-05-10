@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
       {
         ok: false,
         error:
-          "LAMBDA_WATCH_CONFIG_PATH is not configured on this server.",
+          "No watch-config path: set LAMBDA_WATCH_CONFIG_PATH (recommended for production).",
       },
       { status: 503 }
     );
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
       {
         ok: false,
         error:
-          "LAMBDA_WATCH_CONFIG_PATH is not configured on this server.",
+          "No watch-config path: set LAMBDA_WATCH_CONFIG_PATH (recommended for production).",
       },
       { status: 503 }
     );

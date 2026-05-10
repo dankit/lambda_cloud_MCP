@@ -1,4 +1,5 @@
 import path from "node:path";
+import { resolveWatchConfigPathEnv } from "./watch-config-file";
 
 export type ApiKeySource = "header" | "env" | "none";
 
@@ -32,11 +33,11 @@ export function envConfigSnapshot() {
   const apiKey = Boolean(process.env.LAMBDA_API_KEY?.trim());
   const pemPathRaw = process.env.LAMBDA_SSH_PEM_PATH?.trim();
   const pemPath = Boolean(pemPathRaw);
-  const watchPath = process.env.LAMBDA_WATCH_CONFIG_PATH?.trim();
+  const watchConfigured = Boolean(resolveWatchConfigPathEnv());
   return {
     apiKeyConfigured: apiKey,
     pemPathConfigured: pemPath,
     pemPathFilename: pemPathRaw ? pemFilenameHint(pemPathRaw) : null,
-    watchConfigSyncConfigured: Boolean(watchPath),
+    watchConfigSyncConfigured: watchConfigured,
   };
 }

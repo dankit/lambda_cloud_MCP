@@ -24,7 +24,7 @@ All Lambda calls go through **this app’s server routes**; the API key stays ou
 
 1. Copy [`.env.example`](.env.example) to **`.env.local`** or **`.env`** in the project root.
 2. Set **`LAMBDA_API_KEY`** (required for server-side Lambda calls). Set **`LAMBDA_SSH_PEM_PATH`** if you want the suggested SSH path filled in (still not sent to Lambda as key material).
-3. For MCP + file-backed watch config, also set **`LAMBDA_WATCH_HTTP_URL`**, and **`LAMBDA_WATCH_CONFIG_PATH`** when you want the UI to persist alerts/snipe for GET/MCP. Optional: **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**, **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`**, **`LAMBDA_WATCH_HTTP_SYNC_SECRET`**, **`LAMBDA_WATCH_ALLOW_SYNC`**—see [`.env.example`](.env.example).
+3. For MCP + synced watch/snipe JSON: **`npm run dev`** auto-persists to **`.lambda/watch-config.json`** unless **`LAMBDA_WATCH_CONFIG_PATH`** overrides — no env var needed for that path in development. On the MCP host set **`LAMBDA_WATCH_HTTP_URL`** (example **`http://127.0.0.1:3000/api/watch-config`**). Explicit **`LAMBDA_WATCH_CONFIG_PATH`** is recommended for **`next start`/production.** Optional: **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**, **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`**, **`LAMBDA_WATCH_HTTP_SYNC_SECRET`**, **`LAMBDA_WATCH_ALLOW_SYNC`**—see [`.env.example`](.env.example).
 4. **`npm install`** then **`npm run dev`** → [http://localhost:3000](http://localhost:3000). On Windows you can run [`dev.cmd`](dev.cmd) instead.
 
 **Optional overrides for the current session:** API key and PEM path in **Settings** (sent only to this app’s APIs).
@@ -69,7 +69,7 @@ The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads w
 
 **`x-lambda-watch-sync-secret`:** MCP sends this header when **`LAMBDA_WATCH_HTTP_SYNC_SECRET`** is set; otherwise it uses **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**.
 
-**Keeping file and UI in sync:** Set **`LAMBDA_WATCH_CONFIG_PATH`** on the Next server. The companion UI debounces writes (~450ms after alert/snipe changes) with **POST** [`/api/watch-config`](src/app/api/watch-config/route.ts), atomically updating the same file that GET serves. GET and POST are allowed in **development** or when **`LAMBDA_WATCH_ALLOW_SYNC=true`**; if **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`** is set, the browser can use **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`** so the client includes the same header.
+**Keeping file and UI in sync:** In **`next dev`** the server writes **`.lambda/watch-config.json`** unless **`LAMBDA_WATCH_CONFIG_PATH`** is set explicitly. **`next start`/production:** set **`LAMBDA_WATCH_CONFIG_PATH`** so the path is writable. The UI debounces writes (~450ms after alert/snipe changes) via **POST** [`/api/watch-config`](src/app/api/watch-config/route.ts), updating the same file GET serves (including empty defaults when missing). Allowed in **development** or **`LAMBDA_WATCH_ALLOW_SYNC=true`**; **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`** plus **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`** can lock down access.
 
 ## Scripts
 

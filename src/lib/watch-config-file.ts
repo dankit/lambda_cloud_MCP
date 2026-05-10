@@ -42,6 +42,20 @@ export async function readWatchConfigFile(
     }
     return { ok: true, path: absolutePath, value: inner.value };
   } catch (e) {
+    const code =
+      typeof e === "object" &&
+      e !== null &&
+      "code" in e &&
+      typeof (e as NodeJS.ErrnoException).code === "string"
+        ? (e as NodeJS.ErrnoException).code
+        : "";
+    if (code === "ENOENT") {
+      return {
+        ok: true,
+        path: absolutePath,
+        value: { capacityAlerts: [], snipePrefs: {} },
+      };
+    }
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, path: absolutePath, error: msg };
   }
@@ -52,6 +66,7 @@ export async function writeWatchConfigFileAtomic(
   value: WatchConfigPayload
 ): Promise<void> {
   const dir = path.dirname(absolutePath);
+  await fs.mkdir(dir, { recursive: true });
   const tmp = path.join(
     dir,
     `.lambda-watch-config.${process.pid}.${Date.now()}.tmp`
@@ -61,11 +76,22 @@ export async function writeWatchConfigFileAtomic(
   await fs.rename(tmp, absolutePath);
 }
 
-/** Resolve env path relative to cwd when not absolute (Node `path.resolve` rules). */
+/** Default path under cwd when unset in development (gitignored `.lambda/`). */
+export const DEFAULT_WATCH_CONFIG_RELATIVE_PATH = ".lambda/watch-config.json";
+
+/**
+ * Resolved JSON path for watch/snipe persistence.
+ * - If `LAMBDA_WATCH_CONFIG_PATH` is set, it wins (resolved relative to cwd when not absolute).
+ * - Else in runtime `NODE_ENV=development`, `.lambda/watch-config.json` under cwd.
+ * - Else null (explicit path recommended for production deployments with a writable filesystem).
+ */
 export function resolveWatchConfigPathEnv(): string | null {
   const raw = process.env.LAMBDA_WATCH_CONFIG_PATH?.trim();
-  if (!raw) return null;
-  return path.resolve(raw);
+  if (raw) return path.resolve(raw);
+  if (process.env.NODE_ENV === "development") {
+    return path.resolve(process.cwd(), DEFAULT_WATCH_CONFIG_RELATIVE_PATH);
+  }
+  return null;
 }
 
 /** Full GET URL for watch config over HTTP (e.g. http://127.0.0.1:3000/api/watch-config). */
@@ -108,8 +134,8 @@ export type LoadedWatchConfigForMcp =
 
 /**
  * Resolve watch/snipe prefs for MCP via GET `LAMBDA_WATCH_HTTP_URL` only (e.g. Next
- * `/api/watch-config`). The Next app may still persist to `LAMBDA_WATCH_CONFIG_PATH`;
- * MCP does not read that file.
+ * `/api/watch-config`). Next persists JSON on disk (`LAMBDA_WATCH_CONFIG_PATH` or dev
+ * default `.lambda/watch-config.json`); MCP does not open that path.
  */
 export async function loadWatchConfigForMcp(): Promise<LoadedWatchConfigForMcp> {
   const httpUrl = resolveWatchHttpUrlEnv();
