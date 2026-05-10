@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveApiKey } from "@/lib/credentials";
 import { lambdaFetch } from "@/lib/lambda";
+import {
+  extractLaunchInstanceIds,
+  notifyPokeOnLaunch,
+} from "@/lib/poke-notify";
 
 type LaunchBody = {
   region_name?: string;
@@ -53,5 +57,19 @@ export async function POST(req: NextRequest) {
       ssh_key_names: [ssh_key_name],
     },
   });
+  if (ok) {
+    const ids = extractLaunchInstanceIds(body);
+    const idLine =
+      ids.length > 0 ? ids.join(", ") : "(no instance id in response)";
+    await notifyPokeOnLaunch({
+      message: [
+        "Lambda GPU launch succeeded.",
+        `Instance type: ${instance_type_name}`,
+        `Region: ${region_name}`,
+        `SSH key name: ${ssh_key_name}`,
+        `Instance id(s): ${idLine}`,
+      ].join("\n"),
+    });
+  }
   return NextResponse.json(body, { status: ok ? 200 : status });
 }
