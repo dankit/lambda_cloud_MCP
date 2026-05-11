@@ -12,6 +12,7 @@ import {
   registerStartRunTool,
   registerStopRunTool,
   registerSyncRepoTool,
+  registerTailLogsTool,
 } from "./tools";
 
 bootstrapMcpProcessEnv();
@@ -24,6 +25,7 @@ const server = new FastMCP({
 registerSetupEnvTool(server);
 registerSyncRepoTool(server);
 registerGetStatusTool(server);
+registerTailLogsTool(server);
 registerStartRunTool(server);
 registerStopRunTool(server);
 registerEditFileTool(server);
