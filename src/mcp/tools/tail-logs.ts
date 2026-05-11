@@ -1,10 +1,7 @@
 import type { FastMCP } from "fastmcp";
 import * as z from "zod";
-import { readCommandEnv, runCommandOnInstance } from "../runtime";
-
-function shellSingleQuote(value: string): string {
-  return "'" + value.replaceAll("'", "'\"'\"'") + "'";
-}
+import { jsonToolResult } from "../json-tool-result";
+import { buildRemoteTailCommand, readCommandEnv, runCommandOnInstance } from "../runtime";
 
 function interpretLogText(stdout: string, stderr: string) {
   const combined = [stdout, stderr].filter(Boolean).join("\n");
@@ -65,14 +62,19 @@ function interpretLogText(stdout: string, stderr: string) {
   if (signals.length === 0) {
     return {
       severity: "info" as const,
-      summary: combined.trim().length > 0 ? "No known failure signatures were detected in the tailed logs." : "The log tail was empty.",
+      summary:
+        combined.trim().length > 0
+          ? "No known failure signatures were detected in the tailed logs."
+          : "The log tail was empty.",
       signals,
       recommendation: "Continue tailing the logs or increase the line count if you need more context.",
     };
   }
 
   return {
-    severity: signals.some((signal) => signal.severity === "error") ? "error" as const : "warning" as const,
+    severity: signals.some((signal) => signal.severity === "error")
+      ? ("error" as const)
+      : ("warning" as const),
     summary: signals.map((signal) => signal.summary).join(" "),
     signals,
     recommendation: signals[0].recommendation,
@@ -83,39 +85,43 @@ export function registerTailLogsTool(server: FastMCP): void {
   server.addTool({
     name: "tail_logs",
     description:
-      "Tail the configured log file on a target instance and return structured error interpretation.",
+      "Tail a log file on the instance (full text in result.stdout/stderr). Optional include_interpretation adds heuristic hints (OOM, CUDA, etc.); set false for raw logs only in the structured payload.",
     parameters: z.object({
       instance_id: z.string().min(1),
       path: z.string().optional(),
-      lines: z.number().int().min(1).max(2000).optional(),
+      lines: z.number().int().min(1).max(5000).optional(),
+      include_interpretation: z.boolean().optional(),
     }),
     annotations: {
       readOnlyHint: true,
       idempotentHint: true,
       title: "tail_logs",
     },
-    execute: async ({ instance_id, path, lines }) => {
+    execute: async ({ instance_id, path, lines, include_interpretation }) => {
       const configuredPath = (path?.trim() || "") || readCommandEnv("MCP_TRAINING_LOG_PATH");
       if (!configuredPath) {
-        return {
+        return jsonToolResult({
           ok: false,
           tool: "tail_logs",
           instanceId: instance_id,
           message:
             "No log path was provided and MCP_TRAINING_LOG_PATH is not configured.",
-        };
+        });
       }
 
       const lineCount = lines ?? 200;
-      const command = "tail -n " + lineCount + " " + shellSingleQuote(configuredPath);
+      const command = buildRemoteTailCommand(configuredPath, lineCount);
       const result = await runCommandOnInstance({
         instanceId: instance_id,
         command,
       });
 
-      const interpretation = interpretLogText(result.stdout ?? "", result.stderr ?? "");
+      const doInterpret = include_interpretation !== false;
+      const interpretation = doInterpret
+        ? interpretLogText(result.stdout ?? "", result.stderr ?? "")
+        : null;
 
-      return {
+      return jsonToolResult({
         ok: result.ok,
         tool: "tail_logs",
         instanceId: instance_id,
@@ -124,7 +130,7 @@ export function registerTailLogsTool(server: FastMCP): void {
         command,
         result,
         interpretation,
-      };
+      });
     },
   });
 }

@@ -8,26 +8,32 @@ import { bootstrapMcpProcessEnv } from "./runtime";
 import {
   registerEditFileTool,
   registerGetStatusTool,
-  registerSetupEnvTool,
+  registerGetUiSettingsTool,
+  registerReadFileTool,
+  registerSetupTrainingEnvironmentTool,
+  registerSshExecTool,
   registerStartRunTool,
-  registerStopRunTool,
-  registerSyncRepoTool,
+  registerStopTrainingTool,
   registerTailLogsTool,
+  registerTerminateInstanceTool,
 } from "./tools";
 
 bootstrapMcpProcessEnv();
 
 const server = new FastMCP({
   name: "lambda-gpu-availability",
-  version: "0.2.0",
+  version: "0.3.0",
 });
 
-registerSetupEnvTool(server);
-registerSyncRepoTool(server);
 registerGetStatusTool(server);
-registerTailLogsTool(server);
+registerGetUiSettingsTool(server);
+registerSetupTrainingEnvironmentTool(server);
 registerStartRunTool(server);
-registerStopRunTool(server);
+registerStopTrainingTool(server);
+registerTailLogsTool(server);
+registerReadFileTool(server);
 registerEditFileTool(server);
+registerSshExecTool(server);
+registerTerminateInstanceTool(server);
 
 await server.start({ transportType: "stdio" });

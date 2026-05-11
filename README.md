@@ -1,6 +1,6 @@
 # Lambda Cloud Orchestration UI + MCP
 
-My biggest blocker over the past few months was GPU availability. Lambda is my favorite platform because it has much less friction to setup than hyperscalers like GCP, but popular GPUs still disappear fast, and I am tired of manually refreshing a tab. This repo aims to not only automate the entire GPU provisioning process, but also provides post-provisioning handoff to agents via MCP. My main intention is to plug this MCP into [Poke](https://poke.com/), so I can agentically orchestrate everything via text message. This way I can step away from the computer and still handle everything from my phone. The MCP is still a work in progress but the UI should work as is.
+My biggest blocker over the past few months was GPU availability. Lambda is my favorite platform because it has much less friction to setup than hyperscalers like GCP, but popular GPUs still disappear fast, and I am tired of manually refreshing a tab. This repo aims to not only automate the entire GPU provisioning process, but also provides post-provisioning handoff to agents via MCP. My main intention is to plug this MCP into [Poke](https://poke.com/), so I can agentically orchestrate everything via text message. This way I can step away from the computer and still handle everything from my phone. The MCP surface is feature-complete for the Poke loop (provision → sync repo → start run → tail logs → stop), but expect breakage as I keep iterating.
 
 ---
 
@@ -24,7 +24,7 @@ All Lambda calls go through **this app’s server routes**; the API key stays ou
 
 1. Copy [`.env.example`](.env.example) to **`.env.local`** or **`.env`** in the project root.
 2. Set **`LAMBDA_API_KEY`** (required for server-side Lambda calls). Set **`LAMBDA_SSH_PEM_PATH`** if you want the suggested SSH path filled in (still not sent to Lambda as key material).
-3. For MCP + synced watch/snipe JSON: **`npm run dev`** auto-persists to **`.lambda/watch-config.json`** unless **`LAMBDA_WATCH_CONFIG_PATH`** overrides — no env var needed for that path in development. With the app open, use **MCP setup** on the home page for a derived **`LAMBDA_WATCH_HTTP_URL`** and a copy-paste env block. Alternative: set **`LAMBDA_WATCH_HTTP_URL`** yourself (example **`http://127.0.0.1:3000/api/watch-config`**). Explicit **`LAMBDA_WATCH_CONFIG_PATH`** is recommended for **`next start`/production.** Optional: **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**, **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`**, **`LAMBDA_WATCH_HTTP_SYNC_SECRET`**, **`LAMBDA_WATCH_ALLOW_SYNC`**—see [`.env.example`](.env.example).
+3. For MCP + synced watch/snipe JSON: **`npm run dev`** auto-persists to **`.lambda/watch-config.json`** unless **`LAMBDA_WATCH_CONFIG_PATH`** overrides — no env var needed for that path in development. For **`next start`/production**, set **`LAMBDA_WATCH_CONFIG_PATH`** explicitly. With the app open, use **MCP setup** on the home page for a derived **`LAMBDA_WATCH_HTTP_URL`** and a copy-paste env block; or set **`LAMBDA_WATCH_HTTP_URL`** yourself (example **`http://127.0.0.1:3000/api/watch-config`**). Optional auth/gating vars (**`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**, **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`**, **`LAMBDA_WATCH_HTTP_SYNC_SECRET`**, **`LAMBDA_WATCH_ALLOW_SYNC`**) are documented in [`.env.example`](.env.example).
 4. **`npm install`** then **`npm run dev`** → [http://localhost:3000](http://localhost:3000). On Windows you can run [`dev.cmd`](dev.cmd) instead.
 
 **Optional overrides for the current session:** API key and PEM path in **Settings** (sent only to this app’s APIs).
@@ -42,30 +42,35 @@ All Lambda calls go through **this app’s server routes**; the API key stays ou
 
 ---
 
-## MCP server (WIP)
+## MCP server
 
 Run **`npm run mcp`** ([`src/mcp/server.ts`](src/mcp/server.ts)). **`LAMBDA_API_KEY`** is required (environment of whatever launches MCP, optionally filled from **`LAMBDA_DOTENV_PATH`**).
 
 **Dotenv bootstrap:** MCP loads **`LAMBDA_DOTENV_PATH`** relative to **`process.cwd()`** (default **`.env.local`** when unset) before tools run — **`override: false`**, so the Cursor MCP **`env`** block still wins where set. The **MCP setup** panel loads **`GET /api/mcp-setup-hints`** for readiness flags and a **`LAMBDA_WATCH_HTTP_URL`** derived from the current origin.
 
-**Tools**
+**Tools** (registered in [`src/mcp/tools/index.ts`](src/mcp/tools/index.ts); instance-scoped tools take `instance_id`)
 
 | Tool | What it does |
 |------|----------------|
-| `lambda_list_instances` | List Lambda scheduled instances (IDs, status, IPs, region, instance type); optional `cluster_id` query. |
-| `lambda_get_watch_snipe_config` | Returns **`capacityAlerts`** and **`snipePrefs`** by fetching **`LAMBDA_WATCH_HTTP_URL`** over HTTP (see below). |
-| `lambda_summarize_gpu_types` | Merges live instances with watch/snipe config into a per-GPU-type summary (watched region, Snipe on/off and SSH key name, matching instances). |
-| `lambda_ssh_list_training_hints` | Returns optional `MCP_*` env snippets for training/environment setup. **Documentation only** — not validated or executed by this tool. |
-| `lambda_ssh_exec` | Resolves `instance_id` to host/IP, SSHs from the MCP process, and runs the given remote script via `bash -lc`. **Arbitrary execution** — use only with trusted agents. |
+| `get_status` (readonly) | Lambda instances plus MCP `setup` snapshot (env + command hints). Optional `instance_id` runs **`MCP_TRAINING_STATUS_COMMAND`** over SSH and returns cost tracking. Optional `include_log_tails` tails **`MCP_TRAINING_LOG_PATH`** (or `log_path`) on up to five instances (or up to ten when `instance_ids_for_tails` is set). Watch/snipe JSON is **not** included — use `get_ui_settings`. [`get-status.ts`](src/mcp/tools/get-status.ts). |
+| `get_ui_settings` (readonly) | Watch/snipe config from **`LAMBDA_WATCH_HTTP_URL`** (capacity alerts, snipe prefs, derived list of GPU types with snipe enabled). [`get-ui-settings.ts`](src/mcp/tools/get-ui-settings.ts). |
+| `setup_training_environment` (destructive) | SSH-runs **`MCP_ENV_SETUP_COMMAND`** (or `command` override) on `instance_id`. [`setup-training-environment.ts`](src/mcp/tools/setup-training-environment.ts). |
+| `start_run` (destructive) | SSH-runs **`MCP_TRAINING_START_COMMAND`** (or `command` override). Optional `parameters` / `env` and `{{placeholder}}` expansion via [`command-template.ts`](src/mcp/command-template.ts). [`start-run.ts`](src/mcp/tools/start-run.ts). |
+| `stop_training` (destructive) | Either **`strategy: run_command`** ( **`MCP_TRAINING_STOP_COMMAND`** or override) or **`strategy: send_signal`** (SIGINT/SIGTERM via PID file or `pgrep` pattern). [`stop-training.ts`](src/mcp/tools/stop-training.ts). |
+| `tail_logs` (readonly) | `tail -n` on **`MCP_TRAINING_LOG_PATH`** (or `path`); full log text in `result`. Optional `include_interpretation` (default true) adds OOM/CUDA/NCCL-style hints. [`tail-logs.ts`](src/mcp/tools/tail-logs.ts). |
+| `read_file` (readonly) | Read a remote file over SSH with a `max_bytes` cap (default 256 KiB). [`read-file.ts`](src/mcp/tools/read-file.ts). |
+| `edit_file` (destructive) | Writes UTF-8 `content` to `path` on `instance_id` via base64 transfer (binary-safe, `mkdir -p` parents). [`edit-file.ts`](src/mcp/tools/edit-file.ts). |
+| `ssh_exec` (destructive) | Run arbitrary remote shell (`bash -lc`) on `instance_id`. [`ssh-exec.ts`](src/mcp/tools/ssh-exec.ts). |
+| `terminate_instance` (destructive) | Lambda HTTP terminate for `instance_id` (same API as the UI). [`terminate-instance.ts`](src/mcp/tools/terminate-instance.ts). |
 
-SSH has **no command whitelist**. Optional hints are listed in [`docs/mcp-ssh-training-hints.md`](docs/mcp-ssh-training-hints.md).
+**SSH** is used by every destructive tool except **`terminate_instance`** (HTTP only). **`get_ui_settings`** uses HTTP to your Next app, not SSH. MCP connects as `ubuntu` (or **`LAMBDA_SSH_USER`**) using **`LAMBDA_SSH_PEM_PATH`** and pipes `bash -lc <script>` over the wire. There is **no command whitelist**; **`ssh_exec`**, **`stop_training`** (`run_command`), **`start_run`**, **`setup_training_environment`**, and **`edit_file`** accept free-form shell. Any agent with MCP access can run arbitrary shell on instances or terminate them via the API. Use only with trusted agents. Optional `MCP_*` hint vars are documented in [`docs/mcp-ssh-training-hints.md`](docs/mcp-ssh-training-hints.md).
 
 ### MCP SSH configuration
 
 - `LAMBDA_SSH_PEM_PATH` is required so MCP can authenticate over SSH.
 - `LAMBDA_SSH_USER` (default `ubuntu`), `LAMBDA_SSH_PORT` (default `22`), `LAMBDA_SSH_TIMEOUT_MS` (default `120000`) tune connection behavior.
 - `LAMBDA_SSH_DISABLE_HOST_KEY_CHECKING` defaults to `true` unless explicitly set to `false`.
-- Optional hints (surfaced only by `lambda_ssh_list_training_hints`, not required for SSH): `MCP_ENV_SETUP_COMMAND`, `MCP_TRAINING_START_COMMAND`, `MCP_TRAINING_STATUS_COMMAND`, `MCP_TRAINING_LOG_PATH`.
+- Optional command hints (in `get_status.setup`; used as defaults when tools omit overrides): `MCP_ENV_SETUP_COMMAND`, `MCP_TRAINING_START_COMMAND`, `MCP_TRAINING_STOP_COMMAND`, `MCP_TRAINING_STATUS_COMMAND`, `MCP_TRAINING_LOG_PATH`.
 
 The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads watch/snipe **only** by **GET**ting **`LAMBDA_WATCH_HTTP_URL`** (for example `http://127.0.0.1:3000/api/watch-config` while the Next app is running). [`GET /api/watch-config`](src/app/api/watch-config/route.ts) serves data from that JSON file on the server. Point **`LAMBDA_WATCH_HTTP_URL`** at that route.
 
@@ -82,13 +87,4 @@ The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads w
 | `npm run start` | Production server (after `build`) |
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest (`vitest run`; launch + Poke flow in [`poke-notify-flow.test.ts`](src/app/api/lambda/launch/poke-notify-flow.test.ts). [`vitest.config.ts`](vitest.config.ts) merges **`loadEnv`** for **development** and **test** so **`.env` / `.env.local`** apply. The live Poke test **fails with the response body** if Poke returns non-2xx or JSON without `success: true`; a passing test only means the **API** accepted the message (check the Poke app / conversation if the UI is empty). |
-| `npm run mcp` | Stdio MCP server (`LAMBDA_API_KEY` required; watch/snipe via GET `LAMBDA_WATCH_HTTP_URL` while the app is up) |
-
-
-
-todo
-MCP_ENV_SETUP_COMMAND could be a bash script that auto clones a repo, need to ensure git credentials are already present on MCP
-MCP_TRAINING_START_COMMAND are cli arguments that can be adjusted
-MCP_TRAINING_STATUS_COMMAND could return shell history, might need to incorporate this with setup command to ensure things were setup
-
-give poke access to target project repo (project being launched, not this one) to make changes and fix things
+| `npm run mcp` | Stdio MCP server (`LAMBDA_API_KEY` required; `LAMBDA_SSH_PEM_PATH` required for SSH tools; **`LAMBDA_WATCH_HTTP_URL`** while the app is up for `get_ui_settings`) |

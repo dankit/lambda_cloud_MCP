@@ -2,7 +2,6 @@ import path from "node:path";
 import { config as loadDotenvFromFile } from "dotenv";
 import { envConfigSnapshot, resolveApiKey } from "../lib/credentials";
 import { lambdaFetch } from "../lib/lambda";
-import { loadWatchConfigForMcp } from "../lib/watch-config-file";
 import {
   listTrainingEnvironmentHints,
   runSshShell,
@@ -259,12 +258,28 @@ export function getSetupSnapshot() {
     environment: envConfigSnapshot(),
     commandHints: listTrainingEnvironmentHints(),
     configuredCommands: {
-      syncRepo: readCommandEnv("MCP_ENV_SETUP_COMMAND"),
+      setupTrainingEnvironment: readCommandEnv("MCP_ENV_SETUP_COMMAND"),
       startRun: readCommandEnv("MCP_TRAINING_START_COMMAND"),
-      stopRun: readCommandEnv("MCP_TRAINING_STOP_COMMAND"),
+      stopTraining: readCommandEnv("MCP_TRAINING_STOP_COMMAND"),
       getStatus: readCommandEnv("MCP_TRAINING_STATUS_COMMAND"),
       logTail: readCommandEnv("MCP_TRAINING_LOG_PATH"),
     },
+  };
+}
+
+export async function terminateLambdaInstance(instanceId: string) {
+  const apiKey = requireApiKey();
+  const { ok, status, body } = await lambdaFetch("/instance-operations/terminate", {
+    method: "POST",
+    apiKey,
+    body: { instance_ids: [instanceId] },
+  });
+  return {
+    ok,
+    instanceId,
+    httpStatus: status,
+    body,
+    message: ok ? null : formatError(body ?? {}),
   };
 }
 
@@ -455,7 +470,7 @@ export async function loadRunObservation(instanceId: string): Promise<RunObserva
         instanceId,
         command: statusCommand,
       });
-      const parsedJson = parseMaybeJson(result.stdout);
+      const parsedJson = parseMaybeJson(result.stdout ?? "");
       remoteStatus = {
         ...result,
         parsedJson,
@@ -509,15 +524,42 @@ export async function loadRunObservation(instanceId: string): Promise<RunObserva
   };
 }
 
-export async function loadStatusPayload(instanceId?: string) {
+const DEFAULT_BATCH_TAIL_MAX_INSTANCES = 5;
+const MAX_BATCH_TAIL_INSTANCES = 10;
+const MAX_LOG_TAIL_LINES = 5000;
+
+/** Safe single-quoted fragment for remote bash -lc (same rules as tail_logs). */
+export function shellSingleQuoteRemote(value: string): string {
+  return "'" + value.replaceAll("'", "'\"'\"'") + "'";
+}
+
+export function buildRemoteTailCommand(logPath: string, lineCount: number): string {
+  const n = Math.min(Math.max(1, Math.floor(lineCount)), MAX_LOG_TAIL_LINES);
+  return "tail -n " + n + " " + shellSingleQuoteRemote(logPath);
+}
+
+export type LoadStatusPayloadOptions = {
+  instanceId?: string;
+  includeLogTails?: boolean;
+  logPath?: string;
+  logLines?: number;
+  /** When set, only these instance ids receive tails (max length capped). */
+  instanceIdsForTails?: string[];
+};
+
+export async function loadStatusPayload(options?: LoadStatusPayloadOptions) {
+  const instanceId = options?.instanceId?.trim() || undefined;
+  const includeLogTails = options?.includeLogTails === true;
+  const logPathOverride = options?.logPath?.trim() || "";
+  const logLines = options?.logLines ?? 200;
   const setup = getSetupSnapshot();
-  const watchConfig = await loadWatchConfigForMcp();
   const instancesResult = await fetchInstances(undefined);
   const payload: Record<string, unknown> = {
     ok: true,
     tool: "get_status",
     setup,
-    watchConfig,
+    note:
+      "Watch/snipe UI config is returned only by the get_ui_settings tool (not duplicated here).",
   };
 
   if (!instancesResult.ok) {
@@ -535,6 +577,58 @@ export async function loadStatusPayload(instanceId?: string) {
     payload.run = run;
     payload.instanceStatus = run;
     payload.costTracking = run.ok ? run.costTracking : null;
+  }
+
+  if (includeLogTails && instancesResult.ok) {
+    const configuredPath =
+      logPathOverride.length > 0 ? logPathOverride : readCommandEnv("MCP_TRAINING_LOG_PATH");
+    if (!configuredPath) {
+      payload.logTailsError =
+        "include_log_tails was true but no log_path was provided and MCP_TRAINING_LOG_PATH is not set.";
+    } else {
+      const requested = options?.instanceIdsForTails?.length
+        ? options.instanceIdsForTails.map((id) => id.trim()).filter(Boolean)
+        : instancesResult.instances.map((i) => i.id);
+      const cap = options?.instanceIdsForTails?.length
+        ? MAX_BATCH_TAIL_INSTANCES
+        : DEFAULT_BATCH_TAIL_MAX_INSTANCES;
+      const limited = requested.slice(0, cap);
+      const command = buildRemoteTailCommand(configuredPath, logLines);
+      const logTails: Array<{
+        instanceId: string;
+        ok: boolean;
+        result?: Awaited<ReturnType<typeof runCommandOnInstance>>;
+        message?: string;
+      }> = [];
+      for (const id of limited) {
+        const exists = instancesResult.instances.some((i) => i.id === id);
+        if (!exists) {
+          logTails.push({
+            instanceId: id,
+            ok: false,
+            message: "Instance id is not in the current Lambda instances list.",
+          });
+          continue;
+        }
+        try {
+          const result = await runCommandOnInstance({ instanceId: id, command });
+          logTails.push({ instanceId: id, ok: result.ok !== false, result });
+        } catch (e) {
+          logTails.push({
+            instanceId: id,
+            ok: false,
+            message: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+      payload.logTails = logTails;
+      payload.logTailsMeta = {
+        path: configuredPath,
+        lines: Math.min(Math.max(1, Math.floor(logLines)), MAX_LOG_TAIL_LINES),
+        instanceCount: logTails.length,
+        cappedTo: cap,
+      };
+    }
   }
 
   return payload;

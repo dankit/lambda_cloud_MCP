@@ -1,5 +1,6 @@
 import type { FastMCP } from "fastmcp";
 import * as z from "zod";
+import { jsonToolResult } from "../json-tool-result";
 import { runCommandOnInstance } from "../runtime";
 
 function shellSingleQuote(value: string): string {
@@ -34,14 +35,14 @@ export function registerEditFileTool(server: FastMCP): void {
         instanceId: instance_id,
         command,
       });
-      return {
+      return jsonToolResult({
         ok: result.ok,
         tool: "edit_file",
         instanceId: instance_id,
         path,
         byteLength: Buffer.byteLength(content, "utf8"),
         result,
-      };
+      });
     },
   });
 }

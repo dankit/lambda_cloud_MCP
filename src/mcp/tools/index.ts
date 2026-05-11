@@ -1,7 +1,10 @@
 export { registerEditFileTool } from "./edit-file";
 export { registerGetStatusTool } from "./get-status";
-export { registerSetupEnvTool } from "./setup-env";
+export { registerGetUiSettingsTool } from "./get-ui-settings";
+export { registerReadFileTool } from "./read-file";
+export { registerSetupTrainingEnvironmentTool } from "./setup-training-environment";
+export { registerSshExecTool } from "./ssh-exec";
 export { registerStartRunTool } from "./start-run";
-export { registerStopRunTool } from "./stop-run";
-export { registerSyncRepoTool } from "./sync-repo";
+export { registerStopTrainingTool } from "./stop-training";
 export { registerTailLogsTool } from "./tail-logs";
+export { registerTerminateInstanceTool } from "./terminate-instance";
