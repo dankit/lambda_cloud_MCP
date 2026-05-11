@@ -24,8 +24,9 @@ export function buildMcpDotenvSnippet(opts: {
     "# Paste into MCP server env or your shell before `npm run mcp`.",
     "# MCP runs in a separate process — UI Settings overrides do not apply.",
     "",
-    "# Optional: load the same vars as Next from repo root (set MCP cwd to this project)",
-    "# LAMBDA_DOTENV_PATH=.env.local",
+    "# Optional: single file — set in shell/Cursor MCP env only (not inside .env):",
+    "# LAMBDA_DOTENV_PATH=.env",
+    "# Default: .env.local then .env from repo root (set MCP cwd to this project)",
     "",
     "# Required for Lambda HTTP tools:",
     "LAMBDA_API_KEY=<paste-from-.env-local>",
@@ -50,6 +51,12 @@ export function buildMcpDotenvSnippet(opts: {
   }
 
   lines.push(
+    "",
+    "# Optional — HTTP Stream for Poke/tunnel (default is stdio for Cursor):",
+    "# LAMBDA_MCP_TRANSPORT=http",
+    "# LAMBDA_MCP_HTTP_PORT=8080",
+    "# LAMBDA_MCP_HTTP_HOST=127.0.0.1",
+    "# LAMBDA_MCP_HTTP_PATH=/mcp",
     "",
     "# Optional MCP SSH tuning:",
     "# LAMBDA_SSH_USER=ubuntu",

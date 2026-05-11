@@ -4,7 +4,23 @@
  */
 
 import { FastMCP, type Logger } from "fastmcp";
+import {
+  logMcpStartupSummary,
+  resolveFastMcpStartOptions,
+} from "./start-transport";
 import { bootstrapMcpProcessEnv } from "./runtime";
+import {
+  registerEditFileTool,
+  registerGetStatusTool,
+  registerGetUiSettingsTool,
+  registerReadFileTool,
+  registerSetupTrainingEnvironmentTool,
+  registerSshExecTool,
+  registerStartRunTool,
+  registerStopTrainingTool,
+  registerTailLogsTool,
+  registerTerminateInstanceTool,
+} from "./tools";
 
 /**
  * Interactive shells (TTY stdin) are not MCP clients, so FastMCP never sees
@@ -34,18 +50,6 @@ function createStdioMcpLogger(): Logger {
     },
   };
 }
-import {
-  registerEditFileTool,
-  registerGetStatusTool,
-  registerGetUiSettingsTool,
-  registerReadFileTool,
-  registerSetupTrainingEnvironmentTool,
-  registerSshExecTool,
-  registerStartRunTool,
-  registerStopTrainingTool,
-  registerTailLogsTool,
-  registerTerminateInstanceTool,
-} from "./tools";
 
 bootstrapMcpProcessEnv();
 
@@ -66,7 +70,9 @@ registerEditFileTool(server);
 registerSshExecTool(server);
 registerTerminateInstanceTool(server);
 
-void server.start({ transportType: "stdio" }).catch((err) => {
+const startOpts = resolveFastMcpStartOptions();
+logMcpStartupSummary(startOpts);
+void server.start(startOpts).catch((err) => {
   console.error(err);
   process.exit(1);
 });

@@ -46,7 +46,9 @@ All Lambda calls go through **this app’s server routes**; the API key stays ou
 
 Run **`npm run mcp`** ([`src/mcp/server.ts`](src/mcp/server.ts)). **`LAMBDA_API_KEY`** is required (environment of whatever launches MCP, optionally filled from **`LAMBDA_DOTENV_PATH`**).
 
-**Dotenv bootstrap:** MCP loads **`LAMBDA_DOTENV_PATH`** relative to **`process.cwd()`** (default **`.env.local`** when unset) before tools run — **`override: false`**, so the Cursor MCP **`env`** block still wins where set. The **MCP setup** panel loads **`GET /api/mcp-setup-hints`** for readiness flags and a **`LAMBDA_WATCH_HTTP_URL`** derived from the current origin.
+**HTTP Stream (e.g. `npx poke … tunnel`):** set **`LAMBDA_MCP_TRANSPORT=http`** (or **`httpStream`**) so FastMCP listens for Streamable HTTP instead of stdio. Use **`LAMBDA_MCP_HTTP_PORT`** (default **8080**), **`LAMBDA_MCP_HTTP_HOST`** (default **127.0.0.1**), and **`LAMBDA_MCP_HTTP_PATH`** (default **`/mcp`**). On startup, FastMCP logs the full URL (e.g. `http://127.0.0.1:8080/mcp`). Optional **`LAMBDA_MCP_HTTP_STATELESS=true`** matches FastMCP’s stateless mode. **Security:** tools are not authenticated over HTTP—keep **`127.0.0.1`** and reach the server through a tunnel; do not expose **`0.0.0.0`** on a public interface without your own controls.
+
+**Dotenv bootstrap:** If **`LAMBDA_DOTENV_PATH`** is set in the real environment (shell or Cursor MCP **`env`**), MCP loads only that file. Otherwise it loads **`.env.local`** then **`.env`** from **`process.cwd()`** (local wins on duplicate keys). **`override: false`**, so the Cursor **`env`** block still wins where set. The **MCP setup** panel loads **`GET /api/mcp-setup-hints`** for readiness flags and a **`LAMBDA_WATCH_HTTP_URL`** derived from the current origin.
 
 **Tools** (registered in [`src/mcp/tools/index.ts`](src/mcp/tools/index.ts); instance-scoped tools take `instance_id`)
 

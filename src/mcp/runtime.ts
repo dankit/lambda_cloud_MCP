@@ -15,9 +15,28 @@ import type { InstanceDetail } from "../app/home/types";
 
 export function bootstrapMcpProcessEnv(): void {
   const raw = process.env.LAMBDA_DOTENV_PATH?.trim();
-  const relativeFile = raw && raw.length > 0 ? raw : ".env.local";
-  const resolved = path.resolve(process.cwd(), relativeFile);
-  loadDotenvFromFile({ path: resolved, override: false, quiet: true });
+  const cwd = process.cwd();
+  if (raw && raw.length > 0) {
+    loadDotenvFromFile({
+      path: path.resolve(cwd, raw),
+      override: false,
+      quiet: true,
+    });
+    return;
+  }
+  // No explicit path: load both (Next-style). `.env.local` first so it wins on duplicate keys;
+  // `.env` fills gaps. `LAMBDA_DOTENV_PATH` inside `.env` cannot select the file — set it in
+  // the shell or Cursor MCP env if you need a single custom path.
+  loadDotenvFromFile({
+    path: path.resolve(cwd, ".env.local"),
+    override: false,
+    quiet: true,
+  });
+  loadDotenvFromFile({
+    path: path.resolve(cwd, ".env"),
+    override: false,
+    quiet: true,
+  });
 }
 
 export function requireApiKey(): string {
