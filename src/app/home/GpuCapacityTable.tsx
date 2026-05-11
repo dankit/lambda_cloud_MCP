@@ -13,6 +13,7 @@ type Props = {
   alertingTypes: Set<string>;
   sshKeys: SshKey[];
   launchCooldown: boolean;
+  runningInstancesLength: number;
   onOpenLaunch: (row: GpuRow) => void;
 };
 
@@ -24,8 +25,10 @@ export function GpuCapacityTable({
   alertingTypes,
   sshKeys,
   launchCooldown,
+  runningInstancesLength,
   onOpenLaunch,
 }: Props) {
+  const atInstanceCap = runningInstancesLength > 0;
   const watched = new Set(
     capacityAlerts.map((a) => a.instance_type_name)
   );
@@ -98,12 +101,15 @@ export function GpuCapacityTable({
                     disabled={
                       !hasCapacity(row) ||
                       !sshKeys.length ||
-                      launchCooldown
+                      launchCooldown ||
+                      atInstanceCap
                     }
                     title={
-                      launchCooldown
-                        ? `Launch rate limit (${LAUNCH_COOLDOWN_MS / 1000}s between launches)`
-                        : undefined
+                      atInstanceCap
+                        ? "Max 1 instance — terminate the running one first."
+                        : launchCooldown
+                          ? `Launch rate limit (${LAUNCH_COOLDOWN_MS / 1000}s between launches)`
+                          : undefined
                     }
                     onClick={() => onOpenLaunch(row)}
                   >

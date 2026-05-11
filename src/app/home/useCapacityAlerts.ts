@@ -90,7 +90,6 @@ export function useCapacityAlerts({
   const [watchConfigMergeConflict, setWatchConfigMergeConflict] =
     useState<WatchConfigMergeConflictPayload | null>(null);
   const prevHadCapacityRef = useRef<Map<string, boolean>>(new Map());
-  const prevSnipeAlertingRef = useRef<Set<string>>(new Set());
   const latestAlertsRef = useRef(capacityAlerts);
   const latestPrefsRef = useRef(snipePrefs);
   useLayoutEffect(() => {
@@ -424,27 +423,30 @@ export function useCapacityAlerts({
     []
   );
 
+  /**
+   * Steady-state snipe: re-evaluates every render. As long as a snipe-enabled
+   * type is currently in `alertingTypes` (i.e. capacity is present in its
+   * scope), and the cap/cooldown/busy gates are clear, fire one launch per
+   * render. `launchInstance` arms a 12s cooldown after each attempt and the
+   * `runningInstancesLength > 0` gate stops further launches once we succeed,
+   * so this won't spam. Standing capacity at page load is captured because the
+   * trigger no longer depends on a false→true edge.
+   */
   useEffect(() => {
     if (!alertsHydrated) return;
-    const prev = prevSnipeAlertingRef.current;
-    const added: string[] = [];
+    if (alertingTypes.size === 0) return;
+    if (runningInstancesLength > 0 || launchBusy || launchCooldown) return;
+
+    const candidates: string[] = [];
     alertingTypes.forEach((n) => {
-      if (!prev.has(n)) added.push(n);
+      if (snipePrefs[n]?.enabled) candidates.push(n);
     });
-    prevSnipeAlertingRef.current = new Set(alertingTypes);
-    if (added.length === 0) return;
+    if (candidates.length === 0) return;
 
     void (async () => {
-      for (const name of added) {
+      for (const name of candidates) {
         const prefs = snipePrefs[name];
         if (!prefs?.enabled) continue;
-        if (
-          runningInstancesLength > 0 ||
-          launchBusy ||
-          launchCooldown
-        ) {
-          continue;
-        }
         const row = gpuRows.find((r) => r.instance_type_name === name);
         if (!row || !hasCapacity(row)) continue;
         const watchRegion =
@@ -462,7 +464,7 @@ export function useCapacityAlerts({
         const r = await launchInstance(name, launchRegionName, keyName);
         if (!r.ok) {
           setSnipeError(`${name}: ${r.message}`);
-          continue;
+          break;
         }
         setSnipeError(null);
         setCapacityAlertForType(name, false);

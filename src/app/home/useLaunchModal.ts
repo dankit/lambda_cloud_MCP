@@ -5,6 +5,13 @@ import { formatError } from "@/app/home/parsers";
 import type { GpuRow, SshKey } from "@/app/home/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/**
+ * Single-instance cap is enforced inside `launchInstance` so manual launches and
+ * snipe go through the same gate; the UI also disables buttons for clarity.
+ */
+export const SINGLE_INSTANCE_LIMIT_MESSAGE =
+  "Refused: max 1 Lambda instance at a time. Terminate the running one first.";
+
 export function useLaunchModal({
   authHeaders,
   applyLambdaHttpStatus,
@@ -12,6 +19,7 @@ export function useLaunchModal({
   sshKeys,
   onLaunchSuccess,
   setLaunchBusy,
+  runningInstancesLength,
 }: {
   authHeaders: HeadersInit;
   applyLambdaHttpStatus: (res: Response) => void;
@@ -19,6 +27,7 @@ export function useLaunchModal({
   sshKeys: SshKey[];
   onLaunchSuccess: () => void;
   setLaunchBusy: (busy: boolean) => void;
+  runningInstancesLength: number;
 }) {
   const [launchModal, setLaunchModal] = useState<GpuRow | null>(null);
   const [launchRegion, setLaunchRegion] = useState("");
@@ -50,6 +59,9 @@ export function useLaunchModal({
       const key = sshKeyName.trim();
       if (!region || !key) {
         return { ok: false, message: "Pick a region and SSH key." };
+      }
+      if (runningInstancesLength > 0) {
+        return { ok: false, message: SINGLE_INSTANCE_LIMIT_MESSAGE };
       }
       setLaunchBusy(true);
       try {
@@ -100,6 +112,7 @@ export function useLaunchModal({
       fetchRunningInstances,
       onLaunchSuccess,
       setLaunchBusy,
+      runningInstancesLength,
     ]
   );
 

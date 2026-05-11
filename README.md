@@ -90,3 +90,4 @@ The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads w
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest (`vitest run`; launch + Poke flow in [`poke-notify-flow.test.ts`](src/app/api/lambda/launch/poke-notify-flow.test.ts). [`vitest.config.ts`](vitest.config.ts) merges **`loadEnv`** for **development** and **test** so **`.env` / `.env.local`** apply. The live Poke test **fails with the response body** if Poke returns non-2xx or JSON without `success: true`; a passing test only means the **API** accepted the message (check the Poke app / conversation if the UI is empty). |
 | `npm run mcp` | Stdio MCP server (`LAMBDA_API_KEY` required; `LAMBDA_SSH_PEM_PATH` required for SSH tools; **`LAMBDA_WATCH_HTTP_URL`** while the app is up for `get_ui_settings`) |
+| `npx.cmd poke@latest tunnel http://127.0.0.1:8080/mcp -n "Local dev mcp"` | connect Poke |

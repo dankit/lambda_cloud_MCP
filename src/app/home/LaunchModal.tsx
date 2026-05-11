@@ -10,6 +10,7 @@ type Props = {
   launchError: string | null;
   launchBusy: boolean;
   launchCooldown: boolean;
+  runningInstancesLength: number;
   sshKeys: SshKey[];
   onClose: () => void;
   onLaunch: () => void;
@@ -24,12 +25,14 @@ export function LaunchModal({
   launchError,
   launchBusy,
   launchCooldown,
+  runningInstancesLength,
   sshKeys,
   onClose,
   onLaunch,
   onChangeRegion,
   onChangeKeyName,
 }: Props) {
+  const atInstanceCap = runningInstancesLength > 0;
   return (
     <div
       className={styles.modalBackdrop}
@@ -77,6 +80,11 @@ export function LaunchModal({
             ))}
           </select>
         </div>
+        {atInstanceCap && (
+          <p className={styles.modalError}>
+            Max 1 Lambda instance at a time. Terminate the running one first.
+          </p>
+        )}
         {launchError && <p className={styles.modalError}>{launchError}</p>}
         <div className={styles.modalActions}>
           <button type="button" className={styles.btn} onClick={onClose}>
@@ -85,7 +93,12 @@ export function LaunchModal({
           <button
             type="button"
             className={`${styles.btn} ${styles.btnPrimary}`}
-            disabled={launchBusy || launchCooldown}
+            disabled={launchBusy || launchCooldown || atInstanceCap}
+            title={
+              atInstanceCap
+                ? "Max 1 instance — terminate the running one first."
+                : undefined
+            }
             onClick={() => void onLaunch()}
           >
             {launchBusy ? "Launching…" : "Launch"}

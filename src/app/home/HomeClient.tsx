@@ -46,6 +46,7 @@ export function HomeClient() {
     sshKeys: data.sshKeys,
     onLaunchSuccess: running.clearTerminateError,
     setLaunchBusy,
+    runningInstancesLength: running.runningInstances.length,
   });
 
   const alerts = useCapacityAlerts({
@@ -262,6 +263,7 @@ export function HomeClient() {
         alertingTypes={alerts.alertingTypes}
         sshKeys={data.sshKeys}
         launchCooldown={launch.launchCooldown}
+        runningInstancesLength={running.runningInstances.length}
         onOpenLaunch={launch.openLaunch}
       />
 
@@ -273,6 +275,7 @@ export function HomeClient() {
           launchError={launch.launchError}
           launchBusy={launchBusy}
           launchCooldown={launch.launchCooldown}
+          runningInstancesLength={running.runningInstances.length}
           sshKeys={data.sshKeys}
           onClose={launch.closeLaunch}
           onLaunch={launch.runLaunch}
