@@ -1,6 +1,8 @@
 # Lambda Cloud Orchestration UI + MCP
 
-My biggest blocker over the past few months was GPU availability. Lambda is my favorite platform because it has much less friction to setup than hyperscalers like GCP, but popular GPUs still disappear fast, and I am tired of manually refreshing a tab. This repo aims to not only automate the entire GPU provisioning process, but also provides post-provisioning handoff to agents via MCP. My main intention is to plug this MCP into [Poke](https://poke.com/), so I can agentically orchestrate everything via text message. This way I can step away from the computer and still handle everything from my phone. The MCP surface is feature-complete for the Poke loop (provision → sync repo → start run → tail logs → stop), but expect breakage as I keep iterating.
+My biggest blocker over the past few months was GPU availability. Lambda is my favorite platform because it has much less friction to setup than hyperscalers like GCP, but popular GPUs still disappear fast, and I am tired of manually refreshing a tab. This repo aims to not only automate the entire GPU provisioning process, but also provides post-provisioning handoff to agents via MCP. The MCP exposes lambda cloud instances via ssh, and commands are orchestrated by [Poke](https://poke.com/) so users can agentically setup machine learning environments and training jobs via text message. This way they can have full agency and productivity remotely from their phones.
+
+I intentionally designed it so that users have to manually setup the GPU auto-provisioning through the UI first. Only one instance can be active at a time. This serves as a guardrail against user/agent from accidently spawning too many instances and running up the cloud bill. I may change this in the future. Once a gpu has been provisioned, the agent can take care of everything else on the machine. From running raw ssh commands, running the env setup command, starting/stopping training jobs, terminating the instance, and more.
 
 ---
 
@@ -90,4 +92,4 @@ The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads w
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest (`vitest run`; launch + Poke flow in [`poke-notify-flow.test.ts`](src/app/api/lambda/launch/poke-notify-flow.test.ts). [`vitest.config.ts`](vitest.config.ts) merges **`loadEnv`** for **development** and **test** so **`.env` / `.env.local`** apply. The live Poke test **fails with the response body** if Poke returns non-2xx or JSON without `success: true`; a passing test only means the **API** accepted the message (check the Poke app / conversation if the UI is empty). |
 | `npm run mcp` | Stdio MCP server (`LAMBDA_API_KEY` required; `LAMBDA_SSH_PEM_PATH` required for SSH tools; **`LAMBDA_WATCH_HTTP_URL`** while the app is up for `get_ui_settings`) |
-| `npx.cmd poke@latest tunnel http://127.0.0.1:8080/mcp -n "Local dev mcp"` | connect Poke |
+| `npx.cmd poke@latest tunnel http://127.0.0.1:8080/mcp -n "Local dev mcp"` | connect Poke bridge |
