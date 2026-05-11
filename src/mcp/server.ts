@@ -3,8 +3,37 @@
  * Run: `npm run mcp` with LAMBDA_API_KEY and SSH env configured.
  */
 
-import { FastMCP } from "fastmcp";
+import { FastMCP, type Logger } from "fastmcp";
 import { bootstrapMcpProcessEnv } from "./runtime";
+
+/**
+ * Interactive shells (TTY stdin) are not MCP clients, so FastMCP never sees
+ * initialize/capabilities and logs a noisy warning. Real hosts (e.g. Cursor)
+ * use a pipe, so we only filter in the TTY case.
+ */
+function createStdioMcpLogger(): Logger {
+  const skipCapabilitiesWarning =
+    typeof process.stdin !== "undefined" && process.stdin.isTTY === true;
+
+  return {
+    debug: (...args: unknown[]) => console.debug(...args),
+    error: (...args: unknown[]) => console.error(...args),
+    info: (...args: unknown[]) => console.info(...args),
+    log: (...args: unknown[]) => console.log(...args),
+    warn: (...args: unknown[]) => {
+      if (skipCapabilitiesWarning) {
+        const first = args[0];
+        if (
+          typeof first === "string" &&
+          first.includes("could not infer client capabilities")
+        ) {
+          return;
+        }
+      }
+      console.warn(...args);
+    },
+  };
+}
 import {
   registerEditFileTool,
   registerGetStatusTool,
@@ -23,6 +52,7 @@ bootstrapMcpProcessEnv();
 const server = new FastMCP({
   name: "lambda-gpu-availability",
   version: "0.3.0",
+  logger: createStdioMcpLogger(),
 });
 
 registerGetStatusTool(server);
@@ -36,4 +66,7 @@ registerEditFileTool(server);
 registerSshExecTool(server);
 registerTerminateInstanceTool(server);
 
-await server.start({ transportType: "stdio" });
+void server.start({ transportType: "stdio" }).catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

@@ -21,7 +21,7 @@ export function buildMcpDotenvSnippet(opts: {
   syncSecretRequired: boolean;
 }): string {
   const lines: string[] = [
-    "# Paste into Cursor MCP server env or your shell before `npm run mcp`.",
+    "# Paste into MCP server env or your shell before `npm run mcp`.",
     "# MCP runs in a separate process — UI Settings overrides do not apply.",
     "",
     "# Optional: load the same vars as Next from repo root (set MCP cwd to this project)",

@@ -17,7 +17,7 @@ export function bootstrapMcpProcessEnv(): void {
   const raw = process.env.LAMBDA_DOTENV_PATH?.trim();
   const relativeFile = raw && raw.length > 0 ? raw : ".env.local";
   const resolved = path.resolve(process.cwd(), relativeFile);
-  loadDotenvFromFile({ path: resolved, override: false });
+  loadDotenvFromFile({ path: resolved, override: false, quiet: true });
 }
 
 export function requireApiKey(): string {
