@@ -12,47 +12,121 @@ export const sshExecCommandSchema = z
   .max(MAX_SSH_COMMAND_CHARS)
   .refine((s) => !s.includes("\0"), "command must not contain NUL bytes");
 
-const HINT_KEYS = [
-  {
-    env: "MCP_ENV_SETUP_COMMAND",
-    id: "env_setup",
-    summary: "Suggested shell snippet for environment setup (documentation only).",
-  },
-  {
-    env: "MCP_TRAINING_START_COMMAND",
-    id: "training_start",
-    summary:
-      "Suggested shell snippet to start a training job (documentation only).",
-  },
-  {
-    env: "MCP_TRAINING_STATUS_COMMAND",
-    id: "training_status",
-    summary:
-      "Suggested shell snippet to check training status (documentation only).",
-  },
-  {
-    env: "MCP_TRAINING_LOG_PATH",
-    id: "training_log_path",
-    summary:
-      "Typical training log path on the instance for tail/grep (documentation only).",
-  },
+const TRAINING_COMMANDS_JSON_ENV = "MCP_TRAINING_COMMANDS_JSON";
+const LEGACY_TRAINING_COMMAND_ENVS = [
+  { env: "MCP_ENV_SETUP_COMMAND", field: "setup" },
+  { env: "MCP_TRAINING_START_COMMAND", field: "start" },
+  { env: "MCP_TRAINING_STOP_COMMAND", field: "stop" },
+  { env: "MCP_TRAINING_STATUS_COMMAND", field: "status" },
+  { env: "MCP_TRAINING_LOG_PATH", field: "logPath" },
 ] as const;
 
-export type TrainingEnvironmentHint = {
-  id: string;
-  summary: string;
-  value: string;
+export type TrainingCommandsConfig = {
+  setup: string | null;
+  start: string | null;
+  stop: string | null;
+  status: string | null;
+  logPath: string | null;
+  source: "json" | "legacy";
+  rawJson: string | null;
 };
 
-export function listTrainingEnvironmentHints(): TrainingEnvironmentHint[] {
-  const hints: TrainingEnvironmentHint[] = [];
-  for (const { env, id, summary } of HINT_KEYS) {
-    const raw = process.env[env]?.trim();
-    if (raw) hints.push({ id, summary, value: raw });
-  }
-  return hints;
+function normalizeString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
+function readLegacyTrainingCommands(): Omit<TrainingCommandsConfig, "source" | "rawJson"> {
+  const result = {
+    setup: null as string | null,
+    start: null as string | null,
+    stop: null as string | null,
+    status: null as string | null,
+    logPath: null as string | null,
+  };
+  for (const { env, field } of LEGACY_TRAINING_COMMAND_ENVS) {
+    const value = normalizeString(process.env[env]);
+    if (value) {
+      result[field] = value;
+    }
+  }
+  return result;
+}
+
+function parseTrainingCommandsJson(raw: string): Omit<TrainingCommandsConfig, "source" | "rawJson"> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      "MCP_TRAINING_COMMANDS_JSON must be valid JSON with setup, start, stop, status, and logPath fields."
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      "MCP_TRAINING_COMMANDS_JSON must be a JSON object with setup, start, stop, status, and logPath fields."
+    );
+  }
+  const record = parsed as Record<string, unknown>;
+  return {
+    setup: normalizeString(record.setup),
+    start: normalizeString(record.start),
+    stop: normalizeString(record.stop),
+    status: normalizeString(record.status),
+    logPath: normalizeString(record.logPath ?? record.log_path),
+  };
+}
+
+export function readTrainingCommandsConfig(): TrainingCommandsConfig {
+  const rawJson = normalizeString(process.env[TRAINING_COMMANDS_JSON_ENV]);
+  if (rawJson) {
+    return {
+      ...parseTrainingCommandsJson(rawJson),
+      source: "json",
+      rawJson,
+    };
+  }
+  return {
+    ...readLegacyTrainingCommands(),
+    source: "legacy",
+    rawJson: null,
+  };
+}
+
+export function readTrainingCommand(
+  field: keyof Omit<TrainingCommandsConfig, "source" | "rawJson">
+): string | null {
+  return readTrainingCommandsConfig()[field];
+}
+
+export function listTrainingEnvironmentHints(): TrainingEnvironmentHint[] {
+  const config = readTrainingCommandsConfig();
+  if (config.source === "json" && config.rawJson) {
+    return [
+      {
+        id: "training_commands_json",
+        summary:
+          "Preferred single JSON config for setup/start/stop/status/logPath (documentation only).",
+        value: config.rawJson,
+      },
+    ];
+  }
+  const legacy = readLegacyTrainingCommands();
+  if (!legacy.setup && !legacy.start && !legacy.stop && !legacy.status && !legacy.logPath) {
+    return [];
+  }
+  return [
+    {
+      id: "training_commands_legacy",
+      summary:
+        "Legacy per-command training values (backward compatible); prefer MCP_TRAINING_COMMANDS_JSON.",
+      value: JSON.stringify(legacy, null, 2),
+    },
+  ];
+}
+
+function parsePort(raw: string | undefined): number {
 function parsePort(raw: string | undefined): number {
   const fallback = 22;
   if (!raw?.trim()) return fallback;

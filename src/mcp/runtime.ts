@@ -5,6 +5,8 @@ import { lambdaFetch } from "../lib/lambda";
 import { loadWatchConfigForMcp } from "../lib/watch-config-file";
 import {
   listTrainingEnvironmentHints,
+  readTrainingCommand,
+  readTrainingCommandsConfig,
   runSshShell,
   type SshRunResult,
 } from "../lib/mcp-ssh";
@@ -16,9 +18,14 @@ import type { InstanceDetail } from "../app/home/types";
 
 export function bootstrapMcpProcessEnv(): void {
   const raw = process.env.LAMBDA_DOTENV_PATH?.trim();
-  const relativeFile = raw && raw.length > 0 ? raw : ".env.local";
-  const resolved = path.resolve(process.cwd(), relativeFile);
-  loadDotenvFromFile({ path: resolved, override: false });
+  const files = raw && raw.length > 0 ? [raw] : [".env.local", ".env"];
+  const seen = new Set<string>();
+  for (const relativeFile of files) {
+    const resolved = path.resolve(process.cwd(), relativeFile);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
+    loadDotenvFromFile({ path: resolved, override: false });
+  }
 }
 
 export function requireApiKey(): string {
@@ -32,6 +39,20 @@ export function requireApiKey(): string {
 }
 
 export function readCommandEnv(name: string): string | null {
+  const trainingCommandMap: Record<string, keyof Omit<
+    ReturnType<typeof readTrainingCommandsConfig>,
+    "source" | "rawJson"
+  >> = {
+    MCP_ENV_SETUP_COMMAND: "setup",
+    MCP_TRAINING_START_COMMAND: "start",
+    MCP_TRAINING_STOP_COMMAND: "stop",
+    MCP_TRAINING_STATUS_COMMAND: "status",
+    MCP_TRAINING_LOG_PATH: "logPath",
+  };
+  const mapped = trainingCommandMap[name];
+  if (mapped) {
+    return readTrainingCommand(mapped);
+  }
   const value = process.env[name]?.trim();
   return value && value.length > 0 ? value : null;
 }
@@ -258,13 +279,7 @@ export function getSetupSnapshot() {
   return {
     environment: envConfigSnapshot(),
     commandHints: listTrainingEnvironmentHints(),
-    configuredCommands: {
-      syncRepo: readCommandEnv("MCP_ENV_SETUP_COMMAND"),
-      startRun: readCommandEnv("MCP_TRAINING_START_COMMAND"),
-      stopRun: readCommandEnv("MCP_TRAINING_STOP_COMMAND"),
-      getStatus: readCommandEnv("MCP_TRAINING_STATUS_COMMAND"),
-      logTail: readCommandEnv("MCP_TRAINING_LOG_PATH"),
-    },
+    trainingCommands: readTrainingCommandsConfig(),
   };
 }
 

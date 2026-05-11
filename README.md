@@ -24,10 +24,12 @@ All Lambda calls go through **this app’s server routes**; the API key stays ou
 
 1. Copy [`.env.example`](.env.example) to **`.env.local`** or **`.env`** in the project root.
 2. Set **`LAMBDA_API_KEY`** (required for server-side Lambda calls). Set **`LAMBDA_SSH_PEM_PATH`** if you want the suggested SSH path filled in (still not sent to Lambda as key material).
-3. For MCP + synced watch/snipe JSON: **`npm run dev`** auto-persists to **`.lambda/watch-config.json`** unless **`LAMBDA_WATCH_CONFIG_PATH`** overrides — no env var needed for that path in development. With the app open, use **MCP setup** on the home page for a derived **`LAMBDA_WATCH_HTTP_URL`** and a copy-paste env block. Alternative: set **`LAMBDA_WATCH_HTTP_URL`** yourself (example **`http://127.0.0.1:3000/api/watch-config`**). Explicit **`LAMBDA_WATCH_CONFIG_PATH`** is recommended for **`next start`/production.** Optional: **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**, **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`**, **`LAMBDA_WATCH_HTTP_SYNC_SECRET`**, **`LAMBDA_WATCH_ALLOW_SYNC`**—see [`.env.example`](.env.example).
-4. **`npm install`** then **`npm run dev`** → [http://localhost:3000](http://localhost:3000). On Windows you can run [`dev.cmd`](dev.cmd) instead.
+3. For MCP, no special dotenv plumbing is required: by default it will look for **`.env.local`** and **`.env`** in **`process.cwd()`**. Set **`LAMBDA_DOTENV_PATH`** only if MCP should load a different file.
+4. If you want the run helpers to use one config surface, set **`MCP_TRAINING_COMMANDS_JSON`** to a single JSON object with **`setup`**, **`start`**, **`stop`**, **`status`**, and **`logPath`**. Legacy per-command env vars still work for compatibility, but the JSON env is the preferred surface.
+5. **`npm install`** then **`npm run dev`** → [http://localhost:3000](http://localhost:3000). On Windows you can run [`dev.cmd`](dev.cmd) instead.
 
-**Optional overrides for the current session:** API key and PEM path in **Settings** (sent only to this app’s APIs).
+**Optional overrides for the current session:** API key and PEM path in **Settings** (sent only to this app APIs).
+
 
 ### Behavior
 
@@ -42,34 +44,38 @@ All Lambda calls go through **this app’s server routes**; the API key stays ou
 
 ---
 
-## MCP server (WIP)
+## MCP server
 
-Run **`npm run mcp`** ([`src/mcp/server.ts`](src/mcp/server.ts)). **`LAMBDA_API_KEY`** is required (environment of whatever launches MCP, optionally filled from **`LAMBDA_DOTENV_PATH`**).
+Run **`npm run mcp`** ([`src/mcp/server.ts`](src/mcp/server.ts)). The server is built on **FastMCP** and speaks structured JSON over stdio. **`LAMBDA_API_KEY`** is required (environment of whatever launches MCP, optionally filled from **`LAMBDA_DOTENV_PATH`**).
 
-**Dotenv bootstrap:** MCP loads **`LAMBDA_DOTENV_PATH`** relative to **`process.cwd()`** (default **`.env.local`** when unset) before tools run — **`override: false`**, so the Cursor MCP **`env`** block still wins where set. The **MCP setup** panel loads **`GET /api/mcp-setup-hints`** for readiness flags and a **`LAMBDA_WATCH_HTTP_URL`** derived from the current origin.
+**Dotenv bootstrap:** MCP loads **`.env.local`** and **`.env`** from **`process.cwd()`** by default before tools run. Set **`LAMBDA_DOTENV_PATH`** only when the MCP process should read a different file. Existing environment variables still win because the loader uses **`override: false`**.
+
+**Training command config:** the preferred single config surface is **`MCP_TRAINING_COMMANDS_JSON`**. Use one JSON object with **`setup`**, **`start`**, **`stop`**, **`status`**, and **`logPath`**. The old per-command env vars are still accepted for backward compatibility, but they are now treated as legacy aliases.
 
 **Tools**
 
 | Tool | What it does |
 |------|----------------|
-| `lambda_list_instances` | List Lambda scheduled instances (IDs, status, IPs, region, instance type); optional `cluster_id` query. |
-| `lambda_get_watch_snipe_config` | Returns **`capacityAlerts`** and **`snipePrefs`** by fetching **`LAMBDA_WATCH_HTTP_URL`** over HTTP (see below). |
-| `lambda_summarize_gpu_types` | Merges live instances with watch/snipe config into a per-GPU-type summary (watched region, Snipe on/off and SSH key name, matching instances). |
-| `lambda_ssh_list_training_hints` | Returns optional `MCP_*` env snippets for training/environment setup. **Documentation only** — not validated or executed by this tool. |
-| `lambda_ssh_exec` | Resolves `instance_id` to host/IP, SSHs from the MCP process, and runs the given remote script via `bash -lc`. **Arbitrary execution** — use only with trusted agents. |
+| `setup_env` | Returns the MCP environment snapshot, watch config, and the effective training command config as structured JSON. |
+| `sync_repo` | Syncs the repo/config state used by MCP. |
+| `get_status` | Returns a structured snapshot of the MCP environment, Lambda instances, watch config, and optional remote run status. |
+| `start_run` | Starts the configured run command on a target instance over SSH and returns structured results. |
+| `stop_run` | Stops the configured run command on a target instance over SSH and returns structured results. |
+| `tail_logs` | Tails the configured log file on a target instance over SSH and returns structured error interpretation. |
+| `edit_file` | Writes file contents on a target instance over SSH using a structured transfer. |
 
-SSH has **no command whitelist**. Optional hints are listed in [`docs/mcp-ssh-training-hints.md`](docs/mcp-ssh-training-hints.md).
+All tools return structured JSON and preserve the SSH-backed execution path for run/start/stop/log/edit operations.
 
 ### MCP SSH configuration
 
 - `LAMBDA_SSH_PEM_PATH` is required so MCP can authenticate over SSH.
 - `LAMBDA_SSH_USER` (default `ubuntu`), `LAMBDA_SSH_PORT` (default `22`), `LAMBDA_SSH_TIMEOUT_MS` (default `120000`) tune connection behavior.
 - `LAMBDA_SSH_DISABLE_HOST_KEY_CHECKING` defaults to `true` unless explicitly set to `false`.
-- Optional hints (surfaced only by `lambda_ssh_list_training_hints`, not required for SSH): `MCP_ENV_SETUP_COMMAND`, `MCP_TRAINING_START_COMMAND`, `MCP_TRAINING_STATUS_COMMAND`, `MCP_TRAINING_LOG_PATH`.
+- Training helper hints are exposed as structured JSON. Preferred surface: `MCP_TRAINING_COMMANDS_JSON`. Legacy aliases are still read, but the hints now point at the consolidated config.
 
-The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads watch/snipe **only** by **GET**ting **`LAMBDA_WATCH_HTTP_URL`** (for example `http://127.0.0.1:3000/api/watch-config` while the Next app is running). [`GET /api/watch-config`](src/app/api/watch-config/route.ts) serves data from that JSON file on the server. Point **`LAMBDA_WATCH_HTTP_URL`** at that route.
+The MCP process reads watch/snipe state by GETting **`LAMBDA_WATCH_HTTP_URL`** (for example `http://127.0.0.1:3000/api/watch-config` while the Next app is running). [`GET /api/watch-config`](src/app/api/watch-config/route.ts) serves data from that JSON file on the server. Point **`LAMBDA_WATCH_HTTP_URL`** at that route.
 
-**`x-lambda-watch-sync-secret`:** MCP sends this header when **`LAMBDA_WATCH_HTTP_SYNC_SECRET`** is set; otherwise it uses **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**.
+**`x-lambda-watch-sync-secret`**: MCP sends this header when **`LAMBDA_WATCH_HTTP_SYNC_SECRET`** is set; otherwise it uses **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**.
 
 **Keeping file and UI in sync:** In **`next dev`** the server writes **`.lambda/watch-config.json`** unless **`LAMBDA_WATCH_CONFIG_PATH`** is set explicitly. **`next start`/production:** set **`LAMBDA_WATCH_CONFIG_PATH`** so the path is writable. The UI debounces writes (~450ms after alert/snipe changes) via **POST** [`/api/watch-config`](src/app/api/watch-config/route.ts), updating the same file GET serves (including empty defaults when missing). Allowed in **development** or **`LAMBDA_WATCH_ALLOW_SYNC=true`**; **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`** plus **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`** can lock down access.
 
