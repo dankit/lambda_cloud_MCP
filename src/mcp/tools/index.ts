@@ -4,3 +4,4 @@ export { registerSetupEnvTool } from "./setup-env";
 export { registerStartRunTool } from "./start-run";
 export { registerStopRunTool } from "./stop-run";
 export { registerSyncRepoTool } from "./sync-repo";
+export { registerTailLogsTool } from "./tail-logs";
