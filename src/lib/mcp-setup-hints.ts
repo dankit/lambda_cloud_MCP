@@ -31,10 +31,18 @@ export function buildMcpDotenvSnippet(opts: {
     "# Required for Lambda HTTP tools:",
     "LAMBDA_API_KEY=<paste-from-.env-local>",
     "",
-    "# SSH for lambda_ssh_exec:",
+    "# SSH for ssh_exec and other SSH tools:",
     "LAMBDA_SSH_PEM_PATH=<absolute-path-to-key.pem>",
     "",
-    `# Watch/snipe file (same as MCP GET endpoint):`,
+    "# Poke / HTTP Stream (primary):",
+    "LAMBDA_MCP_TRANSPORT=http",
+    "LAMBDA_MCP_HTTP_PORT=8080",
+    "LAMBDA_MCP_HTTP_HOST=127.0.0.1",
+    "LAMBDA_MCP_HTTP_PATH=/mcp",
+    "# Then: npx poke@latest tunnel http://127.0.0.1:8080/mcp -n \"Local dev mcp\"",
+    "# Cursor stdio: omit LAMBDA_MCP_TRANSPORT (stdio is default when unset).",
+    "",
+    `# Watch/snipe (same as MCP GET endpoint):`,
     `LAMBDA_WATCH_HTTP_URL=${opts.suggestedWatchHttpUrl}`,
     "",
   ];
@@ -51,12 +59,6 @@ export function buildMcpDotenvSnippet(opts: {
   }
 
   lines.push(
-    "",
-    "# Optional — HTTP Stream for Poke/tunnel (default is stdio for Cursor):",
-    "# LAMBDA_MCP_TRANSPORT=http",
-    "# LAMBDA_MCP_HTTP_PORT=8080",
-    "# LAMBDA_MCP_HTTP_HOST=127.0.0.1",
-    "# LAMBDA_MCP_HTTP_PATH=/mcp",
     "",
     "# Optional MCP SSH tuning:",
     "# LAMBDA_SSH_USER=ubuntu",

@@ -4,6 +4,19 @@ My biggest blocker over the past few months was GPU availability. Lambda is my f
 
 I intentionally designed it so that users have to manually setup the GPU auto-provisioning through the UI first. Only one instance can be active at a time. This serves as a guardrail against user/agent from accidently spawning too many instances and running up the cloud bill. I may change this in the future. Once a gpu has been provisioned, the agent can take care of everything else on the machine. From running raw ssh commands, running the env setup command, starting/stopping training jobs, terminating the instance, and more.
 
+**Prerequisites:** Node **20+**, a [Lambda API key](https://cloud.lambda.ai/api-keys), an SSH **public** key registered in Lambda, and a local **`.pem`** matching it (for the displayed SSH command only; not sent to Lambda when only the path is configured).
+
+## Quickstart
+
+1. **`npm install`**
+2. Copy [`.env.example`](.env.example) to **`.env.local`** (or **`.env`**) in the project root.
+3. Set the two required vars: **`LAMBDA_API_KEY`** and **`LAMBDA_SSH_PEM_PATH`** (absolute path to your `.pem`).
+4. **`npm run dev`** → open [http://localhost:3000](http://localhost:3000). On Windows/PowerShell, use the same command (no separate launcher script).
+5. In another terminal, **`npm run mcp`** (loads `.env.local` / `.env` from the repo root). With HTTP transport enabled in `.env.example`, FastMCP listens on **`http://127.0.0.1:8080/mcp`**.
+6. Connect [Poke](https://poke.com/): `npx poke@latest tunnel http://127.0.0.1:8080/mcp -n "Local dev mcp"` (on Windows: `npx.cmd poke@latest tunnel …`).
+
+Optional: open **MCP setup** on the home page for readiness badges and a copy-paste env block (includes **`LAMBDA_WATCH_HTTP_URL`** derived from your browser origin).
+
 ---
 
 ## Orchestration UI
@@ -20,16 +33,13 @@ See available GPUs in real near-time, with built-in safeguards to prevent going 
 
 All Lambda calls go through **this app’s server routes**; the API key stays out of the client bundle. Optional session overrides for **API key** and **PEM path** live under **Settings** and are sent only to this app’s APIs.
 
-**Prerequisites:** Node **20+**, a [Lambda API key](https://cloud.lambda.ai/api-keys), an SSH **public** key registered in Lambda, and a local **`.pem`** matching it (for the displayed SSH command only; not sent to Lambda when only the path is configured).
-
 ### Setup
 
-1. Copy [`.env.example`](.env.example) to **`.env.local`** or **`.env`** in the project root.
-2. Set **`LAMBDA_API_KEY`** (required for server-side Lambda calls). Set **`LAMBDA_SSH_PEM_PATH`** if you want the suggested SSH path filled in (still not sent to Lambda as key material).
-3. For MCP + synced watch/snipe JSON: **`npm run dev`** auto-persists to **`.lambda/watch-config.json`** unless **`LAMBDA_WATCH_CONFIG_PATH`** overrides — no env var needed for that path in development. For **`next start`/production**, set **`LAMBDA_WATCH_CONFIG_PATH`** explicitly. With the app open, use **MCP setup** on the home page for a derived **`LAMBDA_WATCH_HTTP_URL`** and a copy-paste env block; or set **`LAMBDA_WATCH_HTTP_URL`** yourself (example **`http://127.0.0.1:3000/api/watch-config`**). Optional auth/gating vars (**`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**, **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`**, **`LAMBDA_WATCH_HTTP_SYNC_SECRET`**, **`LAMBDA_WATCH_ALLOW_SYNC`**) are documented in [`.env.example`](.env.example).
-4. **`npm install`** then **`npm run dev`** → [http://localhost:3000](http://localhost:3000). On Windows you can run [`dev.cmd`](dev.cmd) instead.
+1. Copy [`.env.example`](.env.example) to **`.env.local`** or **`.env`**.
+2. Set **`LAMBDA_API_KEY`** and **`LAMBDA_SSH_PEM_PATH`** (see [`.env.example`](.env.example) tiers).
+3. **`npm install`** then **`npm run dev`** → [http://localhost:3000](http://localhost:3000).
 
-**Optional overrides for the current session:** API key and PEM path in **Settings** (sent only to this app’s APIs).
+**Optional overrides for the current session:** API key and PEM path in **Settings** (sent only to this app’s APIs; they do **not** apply to the MCP process).
 
 ### Behavior
 
@@ -42,15 +52,40 @@ All Lambda calls go through **this app’s server routes**; the API key stays ou
 - **After Snipe:** if the beep keeps going (e.g. API still reports capacity), **Remove alert** or **uncheck** the type in the catalog to stop watching and silence the alarm.
 - **SSH hint:** default `ubuntu` @ port **22**; adjust if your image differs.
 
+### Advanced — watch / snipe sync for MCP
+
+For **`get_ui_settings`**, MCP **GET**s **`LAMBDA_WATCH_HTTP_URL`** (e.g. **`http://127.0.0.1:3000/api/watch-config`** while the Next app is running). In **`next dev`**, the server auto-persists to **`.lambda/watch-config.json`** unless **`LAMBDA_WATCH_CONFIG_PATH`** overrides — no extra env needed for that path in development. For **`next start`/production**, set **`LAMBDA_WATCH_CONFIG_PATH`** explicitly. Use **MCP setup** on the home page for a derived URL and copy-paste block.
+
+The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads watch/snipe **only** via HTTP. [`GET /api/watch-config`](src/app/api/watch-config/route.ts) serves the JSON file the UI writes. **`x-lambda-watch-sync-secret`:** MCP sends this header when **`LAMBDA_WATCH_HTTP_SYNC_SECRET`** is set; otherwise it uses **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**.
+
+**Keeping file and UI in sync:** The UI debounces writes (~450ms after alert/snipe changes) via **POST** [`/api/watch-config`](src/app/api/watch-config/route.ts). Allowed in **development** or **`LAMBDA_WATCH_ALLOW_SYNC=true`**. Optional auth: **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**, **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`**, **`LAMBDA_WATCH_HTTP_SYNC_SECRET`** — see [`.env.example`](.env.example).
+
 ---
 
 ## MCP server
 
-Run **`npm run mcp`** ([`src/mcp/server.ts`](src/mcp/server.ts)). **`LAMBDA_API_KEY`** is required (environment of whatever launches MCP, optionally filled from **`LAMBDA_DOTENV_PATH`**).
+Run **`npm run mcp`** ([`src/mcp/server.ts`](src/mcp/server.ts)). **`LAMBDA_API_KEY`** and **`LAMBDA_SSH_PEM_PATH`** are required.
 
-**HTTP Stream (e.g. `npx poke … tunnel`):** set **`LAMBDA_MCP_TRANSPORT=http`** (or **`httpStream`**) so FastMCP listens for Streamable HTTP instead of stdio. Use **`LAMBDA_MCP_HTTP_PORT`** (default **8080**), **`LAMBDA_MCP_HTTP_HOST`** (default **127.0.0.1**), and **`LAMBDA_MCP_HTTP_PATH`** (default **`/mcp`**). On startup, FastMCP logs the full URL (e.g. `http://127.0.0.1:8080/mcp`). Optional **`LAMBDA_MCP_HTTP_STATELESS=true`** matches FastMCP’s stateless mode. **Security:** tools are not authenticated over HTTP—keep **`127.0.0.1`** and reach the server through a tunnel; do not expose **`0.0.0.0`** on a public interface without your own controls.
+### Poke (HTTP Stream — primary)
 
-**Dotenv bootstrap:** If **`LAMBDA_DOTENV_PATH`** is set in the real environment (shell or Cursor MCP **`env`**), MCP loads only that file. Otherwise it loads **`.env.local`** then **`.env`** from **`process.cwd()`** (local wins on duplicate keys). **`override: false`**, so the Cursor **`env`** block still wins where set. The **MCP setup** panel loads **`GET /api/mcp-setup-hints`** for readiness flags and a **`LAMBDA_WATCH_HTTP_URL`** derived from the current origin.
+`.env.example` enables HTTP by default:
+
+- **`LAMBDA_MCP_TRANSPORT=http`** (aliases: **`httpStream`**, **`http-stream`**)
+- **`LAMBDA_MCP_HTTP_PORT`** (default **8080**), **`LAMBDA_MCP_HTTP_HOST`** (default **127.0.0.1**), **`LAMBDA_MCP_HTTP_PATH`** (default **`/mcp`**)
+
+On startup, FastMCP logs the full URL (e.g. `http://127.0.0.1:8080/mcp`). Connect Poke:
+
+```bash
+npx poke@latest tunnel http://127.0.0.1:8080/mcp -n "Local dev mcp"
+```
+
+Optional **`LAMBDA_MCP_HTTP_STATELESS=true`** matches FastMCP’s stateless mode. **Security:** tools are not authenticated over HTTP—keep **`127.0.0.1`** and reach the server through a tunnel; do not expose **`0.0.0.0`** on a public interface without your own controls.
+
+Set **`LAMBDA_WATCH_HTTP_URL`** (while the Next app is running) so **`get_ui_settings`** can read alerts/snipe from the UI. The **MCP setup** panel on the home page derives this URL and shows readiness badges.
+
+### Cursor (stdio — secondary)
+
+Comment out **`LAMBDA_MCP_TRANSPORT`** (or set **`LAMBDA_MCP_TRANSPORT=stdio`**). FastMCP uses stdio; configure your editor’s MCP block with **`npm run mcp`** and the same env vars. If **`LAMBDA_DOTENV_PATH`** is set in the real environment (shell or Cursor MCP **`env`**), MCP loads only that file. Otherwise it loads **`.env.local`** then **`.env`** from **`process.cwd()`** (`override: false`, so the Cursor **`env`** block still wins where set).
 
 **Tools** (registered in [`src/mcp/tools/index.ts`](src/mcp/tools/index.ts); instance-scoped tools take `instance_id`)
 
@@ -76,12 +111,6 @@ Run **`npm run mcp`** ([`src/mcp/server.ts`](src/mcp/server.ts)). **`LAMBDA_API_
 - `LAMBDA_SSH_DISABLE_HOST_KEY_CHECKING` defaults to `true` unless explicitly set to `false`.
 - Optional command hints (in `get_status.setup`; used as defaults when tools omit overrides): `MCP_ENV_SETUP_COMMAND`, `MCP_TRAINING_START_COMMAND`, `MCP_TRAINING_STOP_COMMAND`, `MCP_TRAINING_STATUS_COMMAND`, `MCP_TRAINING_LOG_PATH`.
 
-The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads watch/snipe **only** by **GET**ting **`LAMBDA_WATCH_HTTP_URL`** (for example `http://127.0.0.1:3000/api/watch-config` while the Next app is running). [`GET /api/watch-config`](src/app/api/watch-config/route.ts) serves data from that JSON file on the server. Point **`LAMBDA_WATCH_HTTP_URL`** at that route.
-
-**`x-lambda-watch-sync-secret`:** MCP sends this header when **`LAMBDA_WATCH_HTTP_SYNC_SECRET`** is set; otherwise it uses **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`**.
-
-**Keeping file and UI in sync:** In **`next dev`** the server writes **`.lambda/watch-config.json`** unless **`LAMBDA_WATCH_CONFIG_PATH`** is set explicitly. **`next start`/production:** set **`LAMBDA_WATCH_CONFIG_PATH`** so the path is writable. The UI debounces writes (~450ms after alert/snipe changes) via **POST** [`/api/watch-config`](src/app/api/watch-config/route.ts), updating the same file GET serves (including empty defaults when missing). Allowed in **development** or **`LAMBDA_WATCH_ALLOW_SYNC=true`**; **`LAMBDA_WATCH_CONFIG_SYNC_SECRET`** plus **`NEXT_PUBLIC_LAMBDA_WATCH_SYNC_SECRET`** can lock down access.
-
 ## Scripts
 
 | Command | Purpose |
@@ -91,5 +120,5 @@ The MCP process **does not read** `LAMBDA_WATCH_CONFIG_PATH` on disk; it loads w
 | `npm run start` | Production server (after `build`) |
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest (`vitest run`; launch + Poke flow in [`poke-notify-flow.test.ts`](src/app/api/lambda/launch/poke-notify-flow.test.ts). [`vitest.config.ts`](vitest.config.ts) merges **`loadEnv`** for **development** and **test** so **`.env` / `.env.local`** apply. The live Poke test **fails with the response body** if Poke returns non-2xx or JSON without `success: true`; a passing test only means the **API** accepted the message (check the Poke app / conversation if the UI is empty). |
-| `npm run mcp` | Stdio MCP server (`LAMBDA_API_KEY` required; `LAMBDA_SSH_PEM_PATH` required for SSH tools; **`LAMBDA_WATCH_HTTP_URL`** while the app is up for `get_ui_settings`) |
-| `npx.cmd poke@latest tunnel http://127.0.0.1:8080/mcp -n "Local dev mcp"` | connect Poke bridge |
+| `npm run mcp` | MCP server (`LAMBDA_API_KEY` + `LAMBDA_SSH_PEM_PATH` required; HTTP on **8080** when `LAMBDA_MCP_TRANSPORT=http`; **`LAMBDA_WATCH_HTTP_URL`** while the app is up for `get_ui_settings`) |
+| `npx poke@latest tunnel http://127.0.0.1:8080/mcp -n "Local dev mcp"` | Connect Poke to local HTTP MCP |

@@ -3,7 +3,7 @@ import { resolvePemPath } from "./credentials";
 import * as z from "zod";
 
 const MAX_CAPTURE_BYTES = 1024 * 256;
-/** Remote script length cap for lambda_ssh_exec (not a security boundary). */
+/** Remote script length cap for ssh_exec (not a security boundary). */
 export const MAX_SSH_COMMAND_CHARS = 32_768;
 
 export const sshExecCommandSchema = z
