@@ -1,9 +1,11 @@
 {
-  "name": "lambda_gpu_availability",
+  "name": "lambda-cloud-mcp",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "setup": "tsx scripts/setup.ts",
+    "dev": "concurrently -n ui,mcp -c blue,magenta \"next dev\" \"npm run mcp\"",
+    "dev:ui": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -20,9 +22,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@clack/prompts": "^1.5.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^10.0.3",
     "eslint": "^9",
     "eslint-config-next": "^16.2.4",
     "tsx": "^4.21.0",
