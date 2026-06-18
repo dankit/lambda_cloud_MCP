@@ -10,16 +10,12 @@ import {
 } from "./start-transport";
 import { bootstrapMcpProcessEnv, preflightMcpEnv } from "./runtime";
 import {
-  registerEditFileTool,
   registerGetStatusTool,
   registerGetUiSettingsTool,
-  registerReadFileTool,
-  registerSetupTrainingEnvironmentTool,
+  registerJobStatusTool,
   registerSshExecTool,
-  registerStartRunTool,
-  registerStopTrainingTool,
-  registerTailLogsTool,
   registerTerminateInstanceTool,
+  registerTransferFileTool,
 } from "./tools";
 
 /** `LAMBDA_MCP_DEBUG_TOOLS=true` → stderr-log every tool call (args + result + ms). */
@@ -154,13 +150,9 @@ if (isToolDebugEnabled()) {
 
 registerGetStatusTool(server);
 registerGetUiSettingsTool(server);
-registerSetupTrainingEnvironmentTool(server);
-registerStartRunTool(server);
-registerStopTrainingTool(server);
-registerTailLogsTool(server);
-registerReadFileTool(server);
-registerEditFileTool(server);
 registerSshExecTool(server);
+registerJobStatusTool(server);
+registerTransferFileTool(server);
 registerTerminateInstanceTool(server);
 
 const startOpts = resolveFastMcpStartOptions();
