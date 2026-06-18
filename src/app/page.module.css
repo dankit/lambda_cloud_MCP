@@ -23,6 +23,30 @@
   max-width: 52rem;
 }
 
+.onboardingBanner {
+  margin: 0 0 0.85rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--accent);
+  border-left-width: 3px;
+  background: rgba(201, 162, 39, 0.08);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--foreground);
+}
+
+.onboardingBanner code {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  padding: 0.05rem 0.25rem;
+  border: 1px solid var(--border);
+  background: var(--background);
+}
+
+.onboardingBanner a {
+  color: var(--accent);
+}
+
 .settingsBar {
   margin-bottom: 0.5rem;
 }

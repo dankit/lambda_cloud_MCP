@@ -107,6 +107,23 @@ export function HomeClient() {
         </p>
       </header>
 
+      {!config.apiKeyBadge.ok && (
+        <div className={styles.onboardingBanner} role="note">
+          <strong>First time here?</strong> Run{" "}
+          <code>npm run setup</code> in the project root for a guided setup, then{" "}
+          <code>npm run dev</code>. It writes <code>.env.local</code> with your{" "}
+          <a
+            href="https://cloud.lambda.ai/api-keys"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Lambda API key
+          </a>{" "}
+          and SSH key path. You can also paste an API key under{" "}
+          <strong>Settings</strong> below for this session only.
+        </div>
+      )}
+
       <SettingsSection
         settingsOpen={settingsOpen}
         onToggleSettings={() => setSettingsOpen((o) => !o)}
