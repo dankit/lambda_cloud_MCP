@@ -61,24 +61,24 @@ Watch/snipe sync between the UI and MCP, plus all tuning knobs, are documented i
 
 `npm run mcp` runs the server ([`src/mcp/server.ts`](src/mcp/server.ts)). On startup it validates that `LAMBDA_API_KEY` and `LAMBDA_SSH_PEM_PATH` are set and prints a clear message (pointing you at `npm run setup`) if anything is missing. With the HTTP transport, FastMCP logs the full URL (e.g. `http://127.0.0.1:8080/mcp`).
 
+The surface is deliberately small: it exposes only what an agent **cannot** do over a raw SSH session it already understands (Lambda API calls, `instance_id`→host resolution, connection/PEM management, structured output, background-job bookkeeping). Routine shell work (`tail`, `cat`, `kill`, installing deps, starting training) is just `ssh_exec` — no per-command tool to bloat the context window.
+
 **Tools** (registered in [`src/mcp/tools/index.ts`](src/mcp/tools/index.ts); instance-scoped tools take `instance_id`)
 
 | Tool | What it does |
 |------|----------------|
-| `get_status` (readonly) | Lambda instances plus an MCP `setup` snapshot (env + command hints). Optional `instance_id` runs **`MCP_TRAINING_STATUS_COMMAND`** over SSH and returns cost tracking. Optional `include_log_tails` tails **`MCP_TRAINING_LOG_PATH`** (or `log_path`). [`get-status.ts`](src/mcp/tools/get-status.ts). |
+| `get_status` (readonly) | Lambda instances plus an MCP `setup` snapshot (env + command hints). Optional `instance_id` runs **`MCP_TRAINING_STATUS_COMMAND`** over SSH and returns cost tracking. [`get-status.ts`](src/mcp/tools/get-status.ts). |
 | `get_ui_settings` (readonly) | Watch/snipe config from the UI (capacity alerts, snipe prefs, GPU types with snipe enabled). [`get-ui-settings.ts`](src/mcp/tools/get-ui-settings.ts). |
-| `setup_training_environment` (destructive) | SSH-runs **`MCP_ENV_SETUP_COMMAND`** (or `command` override) on `instance_id`. [`setup-training-environment.ts`](src/mcp/tools/setup-training-environment.ts). |
-| `start_run` (destructive) | SSH-runs **`MCP_TRAINING_START_COMMAND`** (or `command` override) with `{{placeholder}}` expansion via [`command-template.ts`](src/mcp/command-template.ts). [`start-run.ts`](src/mcp/tools/start-run.ts). |
-| `stop_training` (destructive) | Either `strategy: run_command` (**`MCP_TRAINING_STOP_COMMAND`** or override) or `strategy: send_signal` (SIGINT/SIGTERM via PID file or `pgrep`). [`stop-training.ts`](src/mcp/tools/stop-training.ts). |
-| `tail_logs` (readonly) | `tail -n` on **`MCP_TRAINING_LOG_PATH`** (or `path`); optional `include_interpretation` adds OOM/CUDA/NCCL-style hints. [`tail-logs.ts`](src/mcp/tools/tail-logs.ts). |
-| `read_file` (readonly) | Read a remote file over SSH with a `max_bytes` cap (default 256 KiB). [`read-file.ts`](src/mcp/tools/read-file.ts). |
-| `edit_file` (destructive) | Writes UTF-8 `content` to `path` on `instance_id` via base64 transfer. [`edit-file.ts`](src/mcp/tools/edit-file.ts). |
-| `ssh_exec` (destructive) | Run arbitrary remote shell (`bash -lc`) on `instance_id`. [`ssh-exec.ts`](src/mcp/tools/ssh-exec.ts). |
+| `ssh_exec` (destructive) | Run a shell command (`bash -lc`) on `instance_id` with structured output. Optional `workdir`/`env` persist across calls (logical session continuity); `parameters` fill `{{name}}` placeholders via [`command-template.ts`](src/mcp/command-template.ts); `background: true` detaches a long job (returns a `jobId`) so it survives `LAMBDA_SSH_TIMEOUT_MS`. [`ssh-exec.ts`](src/mcp/tools/ssh-exec.ts). |
+| `job_status` (destructive) | Inspect or stop a background job started by `ssh_exec`: `status`/`logs` (running, exit code, log tail, optional OOM/CUDA/NCCL interpretation) or `stop` (signal the job's process group). [`job-status.ts`](src/mcp/tools/job-status.ts). |
+| `transfer_file` (destructive) | `write` inline UTF-8 content to a remote path (base64-safe), or `upload`/`download` files and directories via `scp`. [`transfer-file.ts`](src/mcp/tools/transfer-file.ts). |
 | `terminate_instance` (destructive) | Lambda HTTP terminate for `instance_id`. [`terminate-instance.ts`](src/mcp/tools/terminate-instance.ts). |
+
+Preset training commands (`MCP_ENV_SETUP_COMMAND`, `MCP_TRAINING_START_COMMAND`, `MCP_TRAINING_STOP_COMMAND`, `MCP_TRAINING_LOG_PATH`, …) are still surfaced as **hints** in `get_status.setup.commandHints`; the agent reads them, then runs them with `ssh_exec`.
 
 ### Security
 
-SSH is used by every destructive tool except `terminate_instance` (HTTP only). MCP connects as `ubuntu` (or `LAMBDA_SSH_USER`) using `LAMBDA_SSH_PEM_PATH` and pipes `bash -lc <script>` over the wire. **There is no command whitelist** — `ssh_exec`, `start_run`, `setup_training_environment`, `stop_training` (`run_command`), and `edit_file` accept free-form shell. Any agent with MCP access can run arbitrary shell on instances or terminate them. **Use only with trusted agents.**
+Every tool except `terminate_instance` (HTTP only) uses SSH/scp. MCP connects as `ubuntu` (or `LAMBDA_SSH_USER`) using `LAMBDA_SSH_PEM_PATH` and pipes `bash -lc <script>` over the wire. **There is no command whitelist** — `ssh_exec`, background jobs, and `transfer_file` (`write`) accept free-form shell/paths. Any agent with MCP access can run arbitrary shell on instances or terminate them. **Use only with trusted agents.**
 
 In HTTP mode, tools are **not authenticated** over the wire — keep the server on `127.0.0.1` and reach it through a tunnel; do not expose `0.0.0.0` on a public interface without your own controls.
 

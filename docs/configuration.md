@@ -62,17 +62,17 @@ over HTTP via `get_ui_settings`.
 
 ## Training / environment hints
 
-Optional documentation surfaced through `get_status.setup` and used as defaults
-when tools omit overrides. Not executed by the server itself. See
-[mcp-ssh-training-hints.md](mcp-ssh-training-hints.md).
+Optional documentation surfaced through `get_status.setup.commandHints`. Not
+executed by the server itself — the agent reads them and runs the real command
+with `ssh_exec`. See [mcp-ssh-training-hints.md](mcp-ssh-training-hints.md).
 
 | Variable | Description |
 |----------|-------------|
 | `MCP_ENV_SETUP_COMMAND` | Suggested environment-setup shell. |
 | `MCP_TRAINING_START_COMMAND` | Suggested training-start shell. |
-| `MCP_TRAINING_STOP_COMMAND` | Suggested training-stop shell (used by `stop_training` `run_command`). |
+| `MCP_TRAINING_STOP_COMMAND` | Suggested training-stop shell. |
 | `MCP_TRAINING_STATUS_COMMAND` | Suggested status shell; also enables cost tracking in `get_status`. |
-| `MCP_TRAINING_LOG_PATH` | Default remote log path for `tail_logs` / log tails. |
+| `MCP_TRAINING_LOG_PATH` | Suggested remote log path to `tail` via `ssh_exec`. |
 
 ## Other
 
