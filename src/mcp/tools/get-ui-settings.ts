@@ -1,7 +1,10 @@
 import type { FastMCP } from "fastmcp";
 import * as z from "zod";
 import { jsonToolResult } from "../json-tool-result";
-import { loadWatchConfigForMcp } from "../../lib/watch-config-file";
+import {
+  DEFAULT_WATCH_HTTP_URL,
+  loadWatchConfigForMcp,
+} from "../../lib/watch-config-file";
 
 export function registerGetUiSettingsTool(server: FastMCP): void {
   server.addTool({
@@ -27,8 +30,9 @@ export function registerGetUiSettingsTool(server: FastMCP): void {
           watchHttpConfigured,
           environment: {
             lambdaWatchHttpUrlPresent: watchHttpConfigured,
-            lambdaWatchConfigPathNote:
-              "MCP reads watch/snipe only via LAMBDA_WATCH_HTTP_URL (Next serves the JSON file).",
+            lambdaWatchConfigPathNote: watchHttpConfigured
+              ? "MCP reads watch/snipe via LAMBDA_WATCH_HTTP_URL (Next serves the JSON file)."
+              : `LAMBDA_WATCH_HTTP_URL is unset; MCP tried the local-dev default ${DEFAULT_WATCH_HTTP_URL}. Start the UI with \`npm run dev\`, or set LAMBDA_WATCH_HTTP_URL if it runs elsewhere.`,
           },
           watch,
         });

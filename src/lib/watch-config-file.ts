@@ -94,10 +94,17 @@ export function resolveWatchConfigPathEnv(): string | null {
   return null;
 }
 
-/** Full GET URL for watch config over HTTP (e.g. http://127.0.0.1:3000/api/watch-config). */
-export function resolveWatchHttpUrlEnv(): string | null {
+/** Local-dev default so `get_ui_settings` works with zero config alongside `next dev`. */
+export const DEFAULT_WATCH_HTTP_URL = "http://127.0.0.1:3000/api/watch-config";
+
+/**
+ * Full GET URL for watch config over HTTP (e.g. http://127.0.0.1:3000/api/watch-config).
+ * Falls back to the local-dev default when unset so MCP can read the UI's
+ * watch/snipe config without extra configuration in the common local setup.
+ */
+export function resolveWatchHttpUrlEnv(): string {
   const raw = process.env.LAMBDA_WATCH_HTTP_URL?.trim();
-  if (!raw) return null;
+  if (!raw) return DEFAULT_WATCH_HTTP_URL;
   return raw;
 }
 
@@ -127,11 +134,6 @@ export type LoadedWatchConfigForMcp =
     }
   | {
       ok: false;
-      source: "unset";
-      message: string;
-    }
-  | {
-      ok: false;
       source: "http";
       url: string;
       error: string;
@@ -145,15 +147,6 @@ export type LoadedWatchConfigForMcp =
  */
 export async function loadWatchConfigForMcp(): Promise<LoadedWatchConfigForMcp> {
   const httpUrl = resolveWatchHttpUrlEnv();
-  if (!httpUrl) {
-    return {
-      ok: false,
-      source: "unset",
-      message:
-        "LAMBDA_WATCH_HTTP_URL is not set. Point it at your running app, e.g. http://127.0.0.1:3000/api/watch-config.",
-    };
-  }
-
   const secret = resolveWatchHttpClientSecretEnv();
   try {
     const headers: HeadersInit = {};
