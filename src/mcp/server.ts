@@ -8,7 +8,7 @@ import {
   logMcpStartupSummary,
   resolveFastMcpStartOptions,
 } from "./start-transport";
-import { bootstrapMcpProcessEnv } from "./runtime";
+import { bootstrapMcpProcessEnv, preflightMcpEnv } from "./runtime";
 import {
   registerEditFileTool,
   registerGetStatusTool,
@@ -137,6 +137,7 @@ function createStdioMcpLogger(): Logger {
 }
 
 bootstrapMcpProcessEnv();
+preflightMcpEnv();
 
 const server = new FastMCP({
   name: "lambda-gpu-availability",

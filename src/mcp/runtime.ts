@@ -1,5 +1,7 @@
 import path from "node:path";
+import { existsSync } from "node:fs";
 import { config as loadDotenvFromFile } from "dotenv";
+import * as z from "zod";
 import { envConfigSnapshot, resolveApiKey } from "../lib/credentials";
 import { lambdaFetch } from "../lib/lambda";
 import {
@@ -37,6 +39,52 @@ export function bootstrapMcpProcessEnv(): void {
     override: false,
     quiet: true,
   });
+}
+
+const mcpEnvSchema = z.object({
+  LAMBDA_API_KEY: z
+    .string()
+    .trim()
+    .min(1, "LAMBDA_API_KEY is required (your Lambda Cloud API key)."),
+  LAMBDA_SSH_PEM_PATH: z
+    .string()
+    .trim()
+    .min(1, "LAMBDA_SSH_PEM_PATH is required (absolute path to your .pem)."),
+});
+
+/**
+ * Validate required env before the server starts so users get one clear,
+ * actionable message instead of an opaque failure at the first tool call.
+ * Logs to stderr (stdout is the stdio JSON-RPC stream) and exits on failure.
+ */
+export function preflightMcpEnv(): void {
+  const result = mcpEnvSchema.safeParse({
+    LAMBDA_API_KEY: process.env.LAMBDA_API_KEY,
+    LAMBDA_SSH_PEM_PATH: process.env.LAMBDA_SSH_PEM_PATH,
+  });
+
+  if (!result.success) {
+    const issues = result.error.issues.map((i) => `  • ${i.message}`).join("\n");
+    console.error(
+      [
+        "",
+        "[lambda-cloud-mcp] Missing required configuration:",
+        issues,
+        "",
+        "Fix it by running the guided setup:  npm run setup",
+        "…or set the variables in .env.local (see docs/configuration.md).",
+        "",
+      ].join("\n")
+    );
+    process.exit(1);
+  }
+
+  const pemPath = result.data.LAMBDA_SSH_PEM_PATH;
+  if (!existsSync(pemPath)) {
+    console.error(
+      `[lambda-cloud-mcp] Warning: no .pem found at LAMBDA_SSH_PEM_PATH (${pemPath}). SSH tools will fail until it exists.`
+    );
+  }
 }
 
 export function requireApiKey(): string {
