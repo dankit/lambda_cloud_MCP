@@ -80,7 +80,7 @@ Preset training commands (`MCP_ENV_SETUP_COMMAND`, `MCP_TRAINING_START_COMMAND`,
 
 Every tool except `terminate_instance` (HTTP only) uses SSH/scp. MCP connects as `ubuntu` (or `LAMBDA_SSH_USER`) using `LAMBDA_SSH_PEM_PATH` and pipes `bash -lc <script>` over the wire. **There is no command whitelist** — `ssh_exec`, background jobs, and `transfer_file` (`write`) accept free-form shell/paths. Any agent with MCP access can run arbitrary shell on instances or terminate them. **Use only with trusted agents.**
 
-In HTTP mode, tools are **not authenticated** over the wire — keep the server on `127.0.0.1` and reach it through a tunnel; do not expose `0.0.0.0` on a public interface without your own controls.
+In HTTP mode, set **`LAMBDA_MCP_HTTP_SECRET`** to require an `Authorization: Bearer <secret>` header on every connection (configure the same token in your MCP client, e.g. Poke); without it the endpoint is unauthenticated and the server logs a loud startup warning. Either way, keep the server on `127.0.0.1` and reach it through a tunnel; do not expose `0.0.0.0` on a public interface without your own controls. stdio (Cursor) is local and not gated.
 
 ## Scripts
 

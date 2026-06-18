@@ -26,10 +26,15 @@ FastMCP CLI-compatible `FASTMCP_*` alias.
 | `LAMBDA_MCP_HTTP_HOST` | `127.0.0.1` | HTTP bind host. Keep loopback and tunnel; tools are unauthenticated over HTTP. |
 | `LAMBDA_MCP_HTTP_PATH` | `/mcp` | HTTP endpoint path. |
 | `LAMBDA_MCP_HTTP_STATELESS` | `false` | `true` matches FastMCP's stateless mode. |
+| `LAMBDA_MCP_HTTP_SECRET` | — | If set, every HTTP connection must send `Authorization: Bearer <secret>`; otherwise the connection is rejected with 401. Unset = unauthenticated (a startup warning is logged). Ignored for stdio. |
 | `FASTMCP_TRANSPORT` / `FASTMCP_PORT` / `FASTMCP_HOST` / `FASTMCP_ENDPOINT` / `FASTMCP_STATELESS` | — | Fallback aliases for the above. |
 
-Security: HTTP mode exposes tools without auth. Bind `127.0.0.1` and reach the
-server through a tunnel; do not expose `0.0.0.0` on an untrusted network.
+Security: in HTTP mode the tools (`ssh_exec`, `transfer_file`, `terminate_instance`,
+…) can run shell on your instances, so anyone who reaches the URL — including a
+public tunnel — can too. **Set `LAMBDA_MCP_HTTP_SECRET`** so clients must present a
+bearer token, configure that same token in your MCP client (e.g. Poke), bind
+`127.0.0.1`, and reach the server through a tunnel; do not expose `0.0.0.0` on an
+untrusted network. stdio (Cursor) is a local trusted channel and is not gated.
 
 ## MCP dotenv loading
 

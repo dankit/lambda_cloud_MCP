@@ -3,6 +3,8 @@
  * HTTP Stream is for remote clients / tunnels (e.g. Poke); stdio is default for Cursor.
  */
 
+import { resolveMcpHttpSecret } from "./auth";
+
 export type FastMcpResolvedStartOptions =
   | { transportType: "stdio" }
   | {
@@ -104,7 +106,8 @@ export function resolveFastMcpStartOptions(): FastMcpResolvedStartOptions {
 
 /**
  * Logs to stderr so stdio MCP never writes diagnostics on stdout (protocol stream).
- * Stdio mode stays silent here (default `npm run mcp`); HTTP prints host:port + URL.
+ * Stdio mode stays silent here (default `npm run mcp`); HTTP prints host:port + URL
+ * plus whether bearer-token auth is enforced (LAMBDA_MCP_HTTP_SECRET).
  */
 export function logMcpStartupSummary(opts: FastMcpResolvedStartOptions): void {
   if (opts.transportType === "stdio") {
@@ -116,4 +119,15 @@ export function logMcpStartupSummary(opts: FastMcpResolvedStartOptions): void {
   console.error(
     `[lambda-gpu-mcp] Transport: HTTP Stream (${mode}); host:port = ${host}:${port}; MCP URL ${url}`
   );
+  if (resolveMcpHttpSecret()) {
+    console.error(
+      "[lambda-gpu-mcp] Auth: bearer token required (Authorization: Bearer <LAMBDA_MCP_HTTP_SECRET>)."
+    );
+  } else {
+    console.error(
+      "[lambda-gpu-mcp] WARNING: HTTP transport is UNAUTHENTICATED. Anyone who can reach this URL " +
+        "(including a public tunnel) can run shell on your instances and terminate them. " +
+        "Set LAMBDA_MCP_HTTP_SECRET to require a bearer token."
+    );
+  }
 }

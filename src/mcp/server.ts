@@ -4,6 +4,8 @@
  */
 
 import { FastMCP, type Logger } from "fastmcp";
+import packageJson from "../../package.json";
+import { createMcpAuthenticate } from "./auth";
 import {
   logMcpStartupSummary,
   resolveFastMcpStartOptions,
@@ -137,8 +139,9 @@ preflightMcpEnv();
 
 const server = new FastMCP({
   name: "lambda-gpu-availability",
-  version: "0.3.0",
+  version: packageJson.version as `${number}.${number}.${number}`,
   logger: createStdioMcpLogger(),
+  authenticate: createMcpAuthenticate(),
 });
 
 if (isToolDebugEnabled()) {
